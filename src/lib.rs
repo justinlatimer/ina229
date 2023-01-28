@@ -1,6 +1,5 @@
 #![no_std]
 
-use core::convert::Infallible;
 use core::result::Result;
 
 use bitflags::bitflags;
@@ -67,15 +66,21 @@ enum Command {
     Write,
 }
 
+#[derive(Debug)]
+pub enum Error<SPIError, CSError> {
+    SPIError(SPIError),
+    ChipSelectError(CSError),
+}
+
 pub struct INA229<SPI, NCS> {
     spi: SPI,
     ncs: NCS,
 }
 
-impl<SPI, NCS, E> INA229<SPI, NCS>
+impl<SPI, NCS, SPIError, CSError> INA229<SPI, NCS>
 where
-    SPI: Transfer<u8, Error = E> + Write<u8, Error = E>,
-    NCS: OutputPin<Error = Infallible>,
+    SPI: Transfer<u8, Error = SPIError> + Write<u8, Error = SPIError>,
+    NCS: OutputPin<Error = CSError>,
 {
     pub fn new(spi: SPI, ncs: NCS) -> Self {
         INA229 { spi, ncs }
@@ -85,56 +90,46 @@ where
         (self.spi, self.ncs)
     }
 
+    fn read_register(&mut self, register: Register) -> Result<u16, Error<SPIError, CSError>> {
+        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00];
+        self.ncs.set_low().map_err(Error::ChipSelectError)?;
+        self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
+        self.ncs.set_high().map_err(Error::ChipSelectError)?;
+        let value = BigEndian::read_u16(&buffer[1..3]);
+        Ok(value)
+    }
+
     /// Sets the CONFIG register with the value provided.
-    pub fn set_configuration(&mut self, configuration: Configuration) -> Result<(), E> {
+    pub fn set_configuration(
+        &mut self,
+        configuration: Configuration,
+    ) -> Result<(), Error<SPIError, CSError>> {
         let mut buffer = [
             get_frame(Register::Configuration, Command::Write),
             0x00,
             0x00,
         ];
         BigEndian::write_u16_into(&[configuration.bits()], &mut buffer[1..3]);
-        infallible(self.ncs.set_low());
-        self.spi.write(&buffer)?;
-        infallible(self.ncs.set_high());
+        self.ncs.set_low().map_err(Error::ChipSelectError)?;
+        self.spi.write(&buffer).map_err(Error::SPIError)?;
+        self.ncs.set_high().map_err(Error::ChipSelectError)?;
         Ok(())
     }
 
     /// Get the configuration.
-    pub fn configuration(&mut self) -> Result<Configuration, E> {
-        let mut buffer = [
-            get_frame(Register::Configuration, Command::Read),
-            0x00,
-            0x00,
-        ];
-        infallible(self.ncs.set_low());
-        self.spi.transfer(&mut buffer)?;
-        infallible(self.ncs.set_high());
-        let value = BigEndian::read_u16(&buffer[1..3]);
-        Ok(Configuration::from_bits_truncate(value))
+    pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError, CSError>> {
+        self.read_register(Register::Configuration)
+            .map(Configuration::from_bits_truncate)
     }
-
+    
     /// Get the unique manufacturer identification number
-    pub fn manufacturer_id(&mut self) -> Result<u16, E> {
-        let mut buffer = [
-            get_frame(Register::ManufacturerID, Command::Read),
-            0x00,
-            0x00,
-        ];
-        infallible(self.ncs.set_low());
-        self.spi.transfer(&mut buffer)?;
-        infallible(self.ncs.set_high());
-        let value = BigEndian::read_u16(&buffer[1..3]);
-        Ok(value)
+    pub fn manufacturer_id(&mut self) -> Result<u16, Error<SPIError, CSError>> {
+        self.read_register(Register::ManufacturerID)
     }
 
     /// Get the unique die identification number.
-    pub fn device_id(&mut self) -> Result<u16, E> {
-        let mut buffer = [get_frame(Register::DeviceID, Command::Read), 0x00, 0x00];
-        infallible(self.ncs.set_low());
-        self.spi.transfer(&mut buffer)?;
-        infallible(self.ncs.set_high());
-        let value = BigEndian::read_u16(&buffer[1..3]);
-        Ok(value)
+    pub fn device_id(&mut self) -> Result<u16, Error<SPIError, CSError>> {
+        self.read_register(Register::DeviceID)
     }
 }
 
@@ -143,13 +138,6 @@ fn get_frame(register: Register, command: Command) -> u8 {
     match command {
         Command::Write => frame & !0b00000001,
         Command::Read => frame | 0b00000001,
-    }
-}
-
-fn infallible<T>(r: Result<T, Infallible>) -> T {
-    match r {
-        Ok(x) => x,
-        Err(never) => match never {},
     }
 }
 
