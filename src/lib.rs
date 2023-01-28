@@ -3,17 +3,61 @@
 use core::convert::Infallible;
 use core::result::Result;
 
+use bitflags::bitflags;
 use byteorder::{BigEndian, ByteOrder};
 use embedded_hal::{
-    blocking::spi::Transfer,
+    blocking::spi::{Transfer, Write},
     digital::v2::OutputPin,
     spi::{Mode, MODE_1},
 };
+
+bitflags! {
+    /// Configuration register contents.
+    #[repr(C)]
+    pub struct Configuration: u16 {
+        /// Reset Bit. Setting this bit to '1' generates a system reset that is the same as power-on reset.
+        /// Resets all registers to default values.
+        /// 0h = Normal Operation
+        /// 1h = System Reset sets registers to default values
+        /// This bit self-clears.
+        /// Default: 0.
+        const RST       = 0b1000_0000_0000_0000;
+
+        /// Resets the contents of accumulation registers ENERGY and CHARGE to 0.
+        /// 0h = Normal Operation
+        /// 1h = Clears registers to default values for ENERGY and CHARGE registers
+        /// Default: 0.
+        const RSTACC    = 0b0100_0000_0000_0000;
+
+        /// Sets the Delay for initial ADC conversion in steps of 2 ms.
+        /// 0h = 0 s
+        /// 1h = 2 ms
+        /// FFh = 510 ms
+        /// Default: 0.
+        const CONVDLY   = 0b0011_1111_1100_0000;
+
+        /// Enables temperature compensation of an external shunt
+        /// 0h = Shunt Temperature Compensation Disabled
+        /// 1h = Shunt Temperature Compensation Enabled
+        /// Default: 0.
+        const TEMPCOMP  = 0b0000_0000_0010_0000;
+
+        /// Shunt full scale range selection across IN+ and IN–.
+        /// 0h = ±163.84 mV
+        /// 1h = ± 40.96 mV
+        /// Default: 0.
+        const ADCRANGE  = 0b0000_0000_0001_0000;
+
+        /// Reserved. Always reads 0.
+        const RESERVED  = 0b0000_0000_0000_1111;
+    }
+}
 
 pub const MODE: Mode = MODE_1;
 
 #[repr(u8)]
 enum Register {
+    Configuration = 0x00,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -30,7 +74,7 @@ pub struct INA229<SPI, NCS> {
 
 impl<SPI, NCS, E> INA229<SPI, NCS>
 where
-    SPI: Transfer<u8, Error = E>,
+    SPI: Transfer<u8, Error = E> + Write<u8, Error = E>,
     NCS: OutputPin<Error = Infallible>,
 {
     pub fn new(spi: SPI, ncs: NCS) -> Self {
@@ -41,27 +85,55 @@ where
         (self.spi, self.ncs)
     }
 
+    /// Sets the CONFIG register with the value provided.
+    pub fn set_configuration(&mut self, configuration: Configuration) -> Result<(), E> {
+        let mut buffer = [
+            get_frame(Register::Configuration, Command::Write),
+            0x00,
+            0x00,
+        ];
+        BigEndian::write_u16_into(&[configuration.bits()], &mut buffer[1..3]);
+        infallible(self.ncs.set_low());
+        self.spi.write(&buffer)?;
+        infallible(self.ncs.set_high());
+        Ok(())
+    }
+
+    /// Get the configuration.
+    pub fn configuration(&mut self) -> Result<Configuration, E> {
+        let mut buffer = [
+            get_frame(Register::Configuration, Command::Read),
+            0x00,
+            0x00,
+        ];
+        infallible(self.ncs.set_low());
+        self.spi.transfer(&mut buffer)?;
+        infallible(self.ncs.set_high());
+        let value = BigEndian::read_u16(&buffer[1..3]);
+        Ok(Configuration::from_bits_truncate(value))
+    }
+
     /// Get the unique manufacturer identification number
     pub fn manufacturer_id(&mut self) -> Result<u16, E> {
-        infallible(self.ncs.set_low());
         let mut buffer = [
             get_frame(Register::ManufacturerID, Command::Read),
             0x00,
             0x00,
         ];
+        infallible(self.ncs.set_low());
         self.spi.transfer(&mut buffer)?;
-        let value = BigEndian::read_u16(&buffer[1..3]);
         infallible(self.ncs.set_high());
+        let value = BigEndian::read_u16(&buffer[1..3]);
         Ok(value)
     }
 
     /// Get the unique die identification number.
     pub fn device_id(&mut self) -> Result<u16, E> {
-        infallible(self.ncs.set_low());
         let mut buffer = [get_frame(Register::DeviceID, Command::Read), 0x00, 0x00];
+        infallible(self.ncs.set_low());
         self.spi.transfer(&mut buffer)?;
-        let value = BigEndian::read_u16(&buffer[1..3]);
         infallible(self.ncs.set_high());
+        let value = BigEndian::read_u16(&buffer[1..3]);
         Ok(value)
     }
 }
