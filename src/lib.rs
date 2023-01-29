@@ -59,6 +59,7 @@ enum Register {
     Configuration = 0x00,
     ShuntVoltage = 0x04,
     BusVoltage = 0x05,
+    DieTemperature = 0x06,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -78,6 +79,7 @@ pub enum Error<SPIError, CSError> {
 const BUS_VOLTAGE_UV_PER_LSB: f64 = 195.3125;
 const SHUNT_VOLTAGE_NV_PER_LSB_MODE_0: f64 = 312.5;
 const SHUNT_VOLTAGE_NV_PER_LSB_MODE_1: f64 = 78.125;
+const TEMPERATURE_MC_PER_LSB: f64 = 7.8125;
 
 pub struct INA229<SPI, NCS> {
     spi: SPI,
@@ -108,6 +110,15 @@ where
         self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
         self.ncs.set_high().map_err(Error::ChipSelectError)?;
         let value = BigEndian::read_u16(&buffer[1..3]);
+        Ok(value)
+    }
+
+    fn read_register_i16(&mut self, register: Register) -> Result<i16, Error<SPIError, CSError>> {
+        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00];
+        self.ncs.set_low().map_err(Error::ChipSelectError)?;
+        self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
+        self.ncs.set_high().map_err(Error::ChipSelectError)?;
+        let value = BigEndian::read_i16(&buffer[1..3]);
         Ok(value)
     }
 
@@ -180,6 +191,17 @@ where
         }
     }
 
+    /// Get the raw die temperature value.
+    pub fn temperature_raw(&mut self) -> Result<i16, Error<SPIError, CSError>> {
+        self.read_register_i16(Register::DieTemperature)
+    }
+
+    /// Get the die temperature in millidegrees Celsius.
+    pub fn temperature_millidegrees_celsius(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        self.temperature_raw()
+            .map(|x| (x as f64) * TEMPERATURE_MC_PER_LSB)
+    }
+
     /// Get the unique manufacturer identification number.
     pub fn manufacturer_id(&mut self) -> Result<u16, Error<SPIError, CSError>> {
         self.read_register_u16(Register::ManufacturerID)
@@ -202,19 +224,11 @@ fn get_frame(register: Register, command: Command) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{get_frame, Command, Register};
-    use byteorder::{BigEndian, ByteOrder};
 
     #[test]
     fn get_frame_manufacturer_read() {
         let result = get_frame(Register::ManufacturerID, Command::Read);
         assert_eq!(result, 0b1111_1001);
-    }
-
-    #[test]
-    fn convert_manufacturer_response() {
-        let buffer = [0x00, 0x54, 0x49];
-        let value = BigEndian::read_u16(&buffer[1..3]);
-        assert_eq!(value, 0x5449);
     }
 
     #[test]
