@@ -57,6 +57,7 @@ pub const MODE: Mode = MODE_1;
 #[repr(u8)]
 enum Register {
     Configuration = 0x00,
+    ShuntVoltage = 0x04,
     BusVoltage = 0x05,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
@@ -69,15 +70,19 @@ enum Command {
 
 #[derive(Debug)]
 pub enum Error<SPIError, CSError> {
+    NotConfigured,
     SPIError(SPIError),
     ChipSelectError(CSError),
 }
 
 const BUS_VOLTAGE_UV_PER_LSB: f64 = 195.3125;
+const SHUNT_VOLTAGE_NV_PER_LSB_MODE_0: f64 = 312.5;
+const SHUNT_VOLTAGE_NV_PER_LSB_MODE_1: f64 = 78.125;
 
 pub struct INA229<SPI, NCS> {
     spi: SPI,
     ncs: NCS,
+    config: Option<Configuration>,
 }
 
 impl<SPI, NCS, SPIError, CSError> INA229<SPI, NCS>
@@ -86,7 +91,11 @@ where
     NCS: OutputPin<Error = CSError>,
 {
     pub fn new(spi: SPI, ncs: NCS) -> Self {
-        INA229 { spi, ncs }
+        INA229 {
+            spi,
+            ncs,
+            config: None,
+        }
     }
 
     pub fn release(self) -> (SPI, NCS) {
@@ -125,6 +134,7 @@ where
         self.ncs.set_low().map_err(Error::ChipSelectError)?;
         self.spi.write(&buffer).map_err(Error::SPIError)?;
         self.ncs.set_high().map_err(Error::ChipSelectError)?;
+        self.config = Some(configuration);
         Ok(())
     }
 
@@ -132,6 +142,10 @@ where
     pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError, CSError>> {
         self.read_register_u16(Register::Configuration)
             .map(Configuration::from_bits_truncate)
+            .map(|config| {
+                self.config = Some(config);
+                config
+            })
     }
 
     /// Get the raw bus voltage reading.
@@ -143,6 +157,27 @@ where
     pub fn bus_voltage_microvolts(&mut self) -> Result<f64, Error<SPIError, CSError>> {
         self.bus_voltage_raw()
             .map(|x| (x as f64) * BUS_VOLTAGE_UV_PER_LSB)
+    }
+
+    /// Get the raw shunt voltage reading.
+    pub fn shunt_voltage_raw(&mut self) -> Result<i32, Error<SPIError, CSError>> {
+        self.read_register_i24(Register::ShuntVoltage)
+            .map(|x| x >> 4)
+    }
+
+    /// Get the shunt voltage reading in nanovolts.
+    pub fn shunt_voltage_nanovolts(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        if let Some(config) = self.config {
+            self.shunt_voltage_raw().map(|value| {
+                if config.contains(Configuration::ADCRANGE) {
+                    (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_1
+                } else {
+                    (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_0
+                }
+            })
+        } else {
+            Err(Error::NotConfigured)
+        }
     }
 
     /// Get the unique manufacturer identification number.
