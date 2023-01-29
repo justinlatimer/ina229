@@ -57,6 +57,7 @@ pub const MODE: Mode = MODE_1;
 #[repr(u8)]
 enum Register {
     Configuration = 0x00,
+    BusVoltage = 0x05,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -71,6 +72,8 @@ pub enum Error<SPIError, CSError> {
     SPIError(SPIError),
     ChipSelectError(CSError),
 }
+
+const BUS_VOLTAGE_UV_PER_LSB: f64 = 195.3125;
 
 pub struct INA229<SPI, NCS> {
     spi: SPI,
@@ -90,12 +93,21 @@ where
         (self.spi, self.ncs)
     }
 
-    fn read_register(&mut self, register: Register) -> Result<u16, Error<SPIError, CSError>> {
+    fn read_register_u16(&mut self, register: Register) -> Result<u16, Error<SPIError, CSError>> {
         let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00];
         self.ncs.set_low().map_err(Error::ChipSelectError)?;
         self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
         self.ncs.set_high().map_err(Error::ChipSelectError)?;
         let value = BigEndian::read_u16(&buffer[1..3]);
+        Ok(value)
+    }
+
+    fn read_register_i24(&mut self, register: Register) -> Result<i32, Error<SPIError, CSError>> {
+        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00, 0x00];
+        self.ncs.set_low().map_err(Error::ChipSelectError)?;
+        self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
+        self.ncs.set_high().map_err(Error::ChipSelectError)?;
+        let value = BigEndian::read_i24(&buffer[1..4]);
         Ok(value)
     }
 
@@ -118,18 +130,29 @@ where
 
     /// Get the configuration.
     pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError, CSError>> {
-        self.read_register(Register::Configuration)
+        self.read_register_u16(Register::Configuration)
             .map(Configuration::from_bits_truncate)
     }
-    
-    /// Get the unique manufacturer identification number
+
+    /// Get the raw bus voltage reading.
+    pub fn bus_voltage_raw(&mut self) -> Result<i32, Error<SPIError, CSError>> {
+        self.read_register_i24(Register::BusVoltage).map(|x| x >> 4)
+    }
+
+    /// Get the bus voltage reading in microvolts.
+    pub fn bus_voltage_microvolts(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        self.bus_voltage_raw()
+            .map(|x| (x as f64) * BUS_VOLTAGE_UV_PER_LSB)
+    }
+
+    /// Get the unique manufacturer identification number.
     pub fn manufacturer_id(&mut self) -> Result<u16, Error<SPIError, CSError>> {
-        self.read_register(Register::ManufacturerID)
+        self.read_register_u16(Register::ManufacturerID)
     }
 
     /// Get the unique die identification number.
     pub fn device_id(&mut self) -> Result<u16, Error<SPIError, CSError>> {
-        self.read_register(Register::DeviceID)
+        self.read_register_u16(Register::DeviceID)
     }
 }
 
