@@ -1,3 +1,33 @@
+//! This is a platform agnostic Rust driver for the [`INA229`], an SPI output
+//! current/voltage/power monitor with alerts, using the [`embedded-hal`] traits.
+//!
+//! [`INA229`]: https://www.ti.com/product/INA229
+//! [`embedded-hal`]: https://github.com/rust-embedded/embedded-hal
+//!
+//! This driver allows you to:
+//! - Callibrate the device. See [`callibrate()`].
+//! - Read the shunt voltage. See [`shunt_voltage_nanovolts()`].
+//! - Read the bus voltage. See [`bus_voltage_microvolts()`].
+//! - Read the current. See [`current_amps()`].
+//! - Read the power. See [`power_watts()`].
+//!
+//! [`callibrate()`]: struct.INA229.html#method.callibrate
+//! [`shunt_voltage_nanovolts()`]: struct.INA229.html#method.shunt_voltage_nanovolts
+//! [`bus_voltage_microvolts()`]: struct.INA229.html#method.bus_voltage_microvolts
+//! [`current_amps()`]: struct.INA229.html#method.current_amps
+//! [`power_watts()`]: struct.INA229.html#method.power_watts
+//!
+//! ## The device
+//!
+//! The INA229-Q1 is an ultra-precise digital power monitor with a 20-bit delta-sigma ADC
+//! specifically designed for current-sensing applications. The device can measure a full-scale
+//! differential input of ±163.84 mV or ±40.96 mV across a resistive shunt sense element with
+//! common-mode voltage support from –0.3 V to +85 V.
+//!
+//! Datasheet:
+//! - [INA229](https://www.ti.com/lit/gpn/ina229)
+
+#![warn(unsafe_code, missing_docs)]
 #![no_std]
 
 use core::result::Result;
@@ -52,6 +82,7 @@ bitflags! {
     }
 }
 
+/// The SPI mode for the INA229.
 pub const MODE: Mode = MODE_1;
 
 #[repr(u8)]
@@ -72,10 +103,16 @@ enum Command {
     Write,
 }
 
+/// Error type for INA229 commands.
 #[derive(Debug)]
 pub enum Error<SPIError, CSError> {
+    /// The INA229 is not configured.
     NotConfigured,
+
+    /// An error occured during an SPI transaction.
     SPIError(SPIError),
+
+    /// An error occured toggling the chip select.
     ChipSelectError(CSError),
 }
 
@@ -111,6 +148,7 @@ fn calculate_current_lsb(current_expected_max: f64) -> f64 {
     current_expected_max / DENOMINATOR
 }
 
+/// INA229 voltage/current/power monitor
 pub struct INA229<SPI, NCS> {
     spi: SPI,
     ncs: NCS,
@@ -123,6 +161,7 @@ where
     SPI: Transfer<u8, Error = SPIError> + Write<u8, Error = SPIError>,
     NCS: OutputPin<Error = CSError>,
 {
+    /// Create a new instance of an INA229 device.
     pub fn new(spi: SPI, ncs: NCS) -> Self {
         INA229 {
             spi,
@@ -132,6 +171,7 @@ where
         }
     }
 
+    /// Destroy the INA229 instance and return the SPI.
     pub fn release(self) -> (SPI, NCS) {
         (self.spi, self.ncs)
     }
