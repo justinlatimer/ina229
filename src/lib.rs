@@ -221,6 +221,17 @@ where
         }
     }
 
+    /// Calculate the shunt calibration value and write to the shunt calibration register.
+    pub fn configure_and_calibrate(
+        &mut self,
+        configuration: Configuration,
+        shunt_resistance: f64,
+        current_expected_max: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.set_configuration(configuration)
+            .and_then(|_| self.calibrate(shunt_resistance, current_expected_max))
+    }
+
     /// Get the raw bus voltage reading.
     pub fn bus_voltage_raw(&mut self) -> Result<i32, Error<SPIError, CSError>> {
         self.read_register_i24(Register::BusVoltage).map(|x| x >> 4) // 20bit value.
