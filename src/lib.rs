@@ -61,6 +61,7 @@ enum Register {
     ShuntVoltage = 0x04,
     BusVoltage = 0x05,
     DieTemperature = 0x06,
+    Current = 0x07,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -92,7 +93,7 @@ fn calculate_calibration_value(
     configuration: Configuration,
     shunt_resistance: f64,
     current_expected_max: f64,
-) -> u16 {
+) -> (f64, u16) {
     let scale = if configuration.contains(Configuration::ADCRANGE) {
         4.0
     } else {
@@ -100,7 +101,7 @@ fn calculate_calibration_value(
     };
     let current_lsb = calculate_current_lsb(current_expected_max);
     let shunt_cal = INTERNAL_SCALING * current_lsb * shunt_resistance * scale;
-    shunt_cal as u16
+    (current_lsb, shunt_cal as u16)
 }
 
 #[inline(always)]
@@ -112,6 +113,7 @@ pub struct INA229<SPI, NCS> {
     spi: SPI,
     ncs: NCS,
     config: Option<Configuration>,
+    current_lsb: Option<f64>,
 }
 
 impl<SPI, NCS, SPIError, CSError> INA229<SPI, NCS>
@@ -124,6 +126,7 @@ where
             spi,
             ncs,
             config: None,
+            current_lsb: None,
         }
     }
 
@@ -208,8 +211,10 @@ where
         current_expected_max: f64,
     ) -> Result<(), Error<SPIError, CSError>> {
         if let Some(config) = self.config {
-            let value = calculate_calibration_value(config, shunt_resistance, current_expected_max);
+            let (current_lsb, value) =
+                calculate_calibration_value(config, shunt_resistance, current_expected_max);
             self.set_shunt_calibration(value)?;
+            self.current_lsb = Some(current_lsb);
             Ok(())
         } else {
             Err(Error::NotConfigured)
@@ -218,7 +223,7 @@ where
 
     /// Get the raw bus voltage reading.
     pub fn bus_voltage_raw(&mut self) -> Result<i32, Error<SPIError, CSError>> {
-        self.read_register_i24(Register::BusVoltage).map(|x| x >> 4)
+        self.read_register_i24(Register::BusVoltage).map(|x| x >> 4) // 20bit value.
     }
 
     /// Get the bus voltage reading in microvolts.
@@ -257,6 +262,20 @@ where
     pub fn temperature_millidegrees_celsius(&mut self) -> Result<f64, Error<SPIError, CSError>> {
         self.temperature_raw()
             .map(|x| (x as f64) * TEMPERATURE_MC_PER_LSB)
+    }
+
+    /// Get the raw value from the current register.
+    pub fn current_raw(&mut self) -> Result<i32, Error<SPIError, CSError>> {
+        self.read_register_i24(Register::Current).map(|x| x >> 4) // 20bit value.
+    }
+
+    /// Get the current reading in Amps.
+    pub fn current_amps(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        if let Some(current_lsb) = self.current_lsb {
+            self.current_raw().map(|x| (x as f64) * current_lsb)
+        } else {
+            Err(Error::NotConfigured)
+        }
     }
 
     /// Get the unique manufacturer identification number.
@@ -306,7 +325,8 @@ mod tests {
 
     #[test]
     fn calculate_calibration_value_works() {
-        let value = calculate_calibration_value(Configuration::from_bits_truncate(0), 0.0162, 10.0);
+        let (_, value) =
+            calculate_calibration_value(Configuration::from_bits_truncate(0), 0.0162, 10.0);
         assert_eq!(value, 4050);
     }
 }
