@@ -62,6 +62,7 @@ enum Register {
     BusVoltage = 0x05,
     DieTemperature = 0x06,
     Current = 0x07,
+    Power = 0x08,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -83,6 +84,7 @@ const BUS_VOLTAGE_UV_PER_LSB: f64 = 195.3125;
 const SHUNT_VOLTAGE_NV_PER_LSB_MODE_0: f64 = 312.5;
 const SHUNT_VOLTAGE_NV_PER_LSB_MODE_1: f64 = 78.125;
 const TEMPERATURE_MC_PER_LSB: f64 = 7.8125;
+const POWER_SCALING_FACTOR: f64 = 3.2;
 
 // Calibration constants
 const DENOMINATOR: f64 = (1 << 19) as f64; // From Datasheet, 2^19
@@ -162,6 +164,15 @@ where
         self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
         self.ncs.set_high().map_err(Error::ChipSelectError)?;
         let value = BigEndian::read_i16(&buffer[1..3]);
+        Ok(value)
+    }
+
+    fn read_register_u24(&mut self, register: Register) -> Result<u32, Error<SPIError, CSError>> {
+        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00, 0x00];
+        self.ncs.set_low().map_err(Error::ChipSelectError)?;
+        self.spi.transfer(&mut buffer).map_err(Error::SPIError)?;
+        self.ncs.set_high().map_err(Error::ChipSelectError)?;
+        let value = BigEndian::read_u24(&buffer[1..4]);
         Ok(value)
     }
 
@@ -284,6 +295,21 @@ where
     pub fn current_amps(&mut self) -> Result<f64, Error<SPIError, CSError>> {
         if let Some(current_lsb) = self.current_lsb {
             self.current_raw().map(|x| (x as f64) * current_lsb)
+        } else {
+            Err(Error::NotConfigured)
+        }
+    }
+
+    /// Get the raw value from the power register
+    pub fn power_raw(&mut self) -> Result<u32, Error<SPIError, CSError>> {
+        self.read_register_u24(Register::Power)
+    }
+
+    /// Get the power reading in Watts.
+    pub fn power_watts(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        if let Some(current_lsb) = self.current_lsb {
+            self.power_raw()
+                .map(|x| (x as f64) * current_lsb * POWER_SCALING_FACTOR)
         } else {
             Err(Error::NotConfigured)
         }
