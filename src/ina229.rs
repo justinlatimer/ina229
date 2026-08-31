@@ -183,6 +183,8 @@ enum Register {
     DiagAlert = 0x0B,
     SOVL = 0x0C,
     SUVL = 0x0D,
+    BOVL = 0x0E,
+    BUVL = 0x0F,
     TOLT = 0x10,
     POLT = 0x11,
     ManufacturerID = 0x3E,
@@ -205,6 +207,9 @@ pub enum Error<SPIError, CSError> {
 
     /// An error occured toggling the chip select.
     ChipSelectError(CSError),
+
+    /// The raw value provided doesn't fit the register being written to.
+    InvalidRawValue(u16),
 }
 
 // Conversion constants
@@ -215,10 +220,14 @@ const TEMPERATURE_MC_PER_LSB: f64 = 7.8125;
 const POWER_SCALING_FACTOR: f64 = 3.2;
 
 // Alert threshold conversion constants
+const BUS_THRESHOLD_MV_PER_LSB: f64 = 3.125;
 const SHUNT_THRESHOLD_UV_PER_LSB_MODE_0: f64 = 5.0;
 const SHUNT_THRESHOLD_UV_PER_LSB_MODE_1: f64 = 1.25;
 const TEMPERATURE_THRESHOLD_MC_PER_LSB: f64 = TEMPERATURE_MC_PER_LSB;
 const POWER_THRESHOLD_SCALING_FACTOR: f64 = 256.0;
+
+// Register maximum raw values
+const BUS_THRESHOLD_MAX_RAW: u16 = 0x7FFF; // From Datasheet (Tab. 7-19, 7-20), bit-15 reserved
 
 // Calibration constants
 const DENOMINATOR: f64 = (1 << 19) as f64; // From Datasheet, 2^19
@@ -533,6 +542,56 @@ where
     ) -> Result<(), Error<SPIError, CSError>> {
         let lsb = self.shunt_threshold_microvolts_per_lsb()?;
         self.set_shunt_undervoltage_threshold_raw((microvolts / lsb) as i16)
+    }
+
+    /// Get the raw bus overvoltage threshold, from the BOVL register.
+    pub fn bus_overvoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError, CSError>> {
+        self.read_register_u16(Register::BOVL)
+    }
+
+    /// Set the raw bus overvoltage threshold, in the BOVL register.
+    /// Note: bit-15 of BOVL is reserved, so we require value no larger than 0x7FFF.
+    pub fn set_bus_overvoltage_threshold_raw(
+        &mut self,
+        value: u16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        if value > BUS_THRESHOLD_MAX_RAW {
+            return Err(Error::InvalidRawValue(value));
+        }
+        self.write_register_u16(Register::BOVL, value)
+    }
+
+    /// Set the bus overvoltage threshold in millivolts.
+    pub fn set_bus_overvoltage_threshold_millivolts(
+        &mut self,
+        millivolts: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.set_bus_overvoltage_threshold_raw((millivolts / BUS_THRESHOLD_MV_PER_LSB) as u16)
+    }
+
+    /// Get the raw bus undervoltage threshold, from the BUVL register.
+    pub fn bus_undervoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError, CSError>> {
+        self.read_register_u16(Register::BUVL)
+    }
+
+    /// Set the raw bus undervoltage threshold, in the BUVL register.
+    /// Note: bit-15 of BUVL is reserved, so we require value no larger than 0x7FFF.
+    pub fn set_bus_undervoltage_threshold_raw(
+        &mut self,
+        value: u16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        if value > BUS_THRESHOLD_MAX_RAW {
+            return Err(Error::InvalidRawValue(value));
+        }
+        self.write_register_u16(Register::BUVL, value)
+    }
+
+    /// Set the bus undervoltage threshold in millivolts.
+    pub fn set_bus_undervoltage_threshold_millivolts(
+        &mut self,
+        millivolts: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.set_bus_undervoltage_threshold_raw((millivolts / BUS_THRESHOLD_MV_PER_LSB) as u16)
     }
 
     /// Get the raw temperature over-limit threshold, from the TEMP_LIMIT register.
