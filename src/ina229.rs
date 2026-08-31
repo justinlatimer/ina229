@@ -184,6 +184,7 @@ enum Register {
     SOVL = 0x0C,
     SUVL = 0x0D,
     TOLT = 0x10,
+    POLT = 0x11,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -217,6 +218,7 @@ const POWER_SCALING_FACTOR: f64 = 3.2;
 const SHUNT_THRESHOLD_UV_PER_LSB_MODE_0: f64 = 5.0;
 const SHUNT_THRESHOLD_UV_PER_LSB_MODE_1: f64 = 1.25;
 const TEMPERATURE_THRESHOLD_MC_PER_LSB: f64 = TEMPERATURE_MC_PER_LSB;
+const POWER_THRESHOLD_SCALING_FACTOR: f64 = 256.0;
 
 // Calibration constants
 const DENOMINATOR: f64 = (1 << 19) as f64; // From Datasheet, 2^19
@@ -554,6 +556,32 @@ where
         self.set_temperature_overlimit_threshold_raw(
             (millidegrees_celsius / TEMPERATURE_THRESHOLD_MC_PER_LSB) as i16,
         )
+    }
+
+    /// Get the raw power over-limit threshold, from the PWR_LIMIT register.
+    pub fn power_overlimit_threshold_raw(&mut self) -> Result<u16, Error<SPIError, CSError>> {
+        self.read_register_u16(Register::POLT)
+    }
+
+    /// Set the raw power over-limit threshold, in the PWR_LIMIT register.
+    pub fn set_power_overlimit_threshold_raw(
+        &mut self,
+        value: u16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.write_register_u16(Register::POLT, value)
+    }
+
+    /// Se the power over-limit threshold in watts. Requires device to be calibrated.
+    pub fn set_power_overlimit_threshold_watts(
+        &mut self,
+        watts: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        if let Some(current_lsb) = self.current_lsb {
+            let lsb = POWER_THRESHOLD_SCALING_FACTOR * current_lsb * POWER_SCALING_FACTOR;
+            self.set_power_overlimit_threshold_raw((watts / lsb) as u16)
+        } else {
+            Err(Error::NotConfigured)
+        }
     }
 
     /// Get the unique manufacturer identification number.
