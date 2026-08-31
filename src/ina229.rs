@@ -180,6 +180,7 @@ enum Register {
     DieTemperature = 0x06,
     Current = 0x07,
     Power = 0x08,
+    DiagAlert = 0x0B,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -329,6 +330,22 @@ where
                 self.config = Some(config);
                 config
             })
+    }
+
+    /// Configure ALERT pin behaviour by writing to the DIAG_ALERT register.
+    pub fn set_alert_configuration(
+        &mut self,
+        configuration: DiagAlert,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        let mask = DiagAlert::ALATCH | DiagAlert::CNVR | DiagAlert::SLOWALERT | DiagAlert::APOL;
+        self.write_register_u16(Register::DiagAlert, (configuration & mask).bits())
+    }
+
+    /// Read the DIAG_ALERT register, giving the current ALERT pin configuration.
+    /// Note: if [`DiagAlert::ALATCH`] is enabled, reading this register clears the ALERT pin.
+    pub fn alert_configuration(&mut self) -> Result<DiagAlert, Error<SPIError, CSError>> {
+        self.read_register_u16(Register::DiagAlert)
+            .map(DiagAlert::from_bits_truncate)
     }
 
     /// Gets the value from the shunt calibration register.
