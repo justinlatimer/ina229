@@ -52,6 +52,122 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Diagnostic Flags and Alert register contents.
+    ///
+    /// The top four bits (ALATCH, CNVR, SLOWALERT, APOL) configure the behaviour of the
+    /// open-drain ALERT pin. The remaining bits are read-only status/diag flags that
+    /// are set by the device. When [`DiagAlert::ALATCH`] is enabled, reading this reg
+    /// clears any latched flags (see INA229 datasheet, Table 7-16).
+    #[repr(C)]
+    pub struct DiagAlert: u16 {
+        /// Alert Latch Enable
+        /// 0h = Transparent: the ALERT pin and flag bit clear as soon as the fault clears.
+        /// 1h = Latched: the ALERT pin and flag bit stay active until this register is read.
+        /// Default: 0.
+        const ALATCH    = 0b1000_0000_0000_0000;
+
+        /// Configures the ALERT pin to assert when the Conversion Ready flag (CNVRF) is set,
+        /// indicating a conversion cycle has completed.
+        /// 0h = Disable conversion ready flag on ALERT pin
+        /// 1h = Enable conversion ready flag on ALERT pin
+        /// Default: 0.
+        const CNVR      = 0b0100_0000_0000_0000;
+
+        /// When enabled, alert comparisons are made against the averaged output value
+        /// instead of the raw (non-averaged) ADC value.
+        /// 0h = Compare against non-averaged (ADC) value
+        /// 1h = Compare against averaged value
+        /// Default: 0.
+        const SLOWALERT = 0b0010_0000_0000_0000;
+
+        /// Sets the Alert pin polarity. The ALERT pin is always open-drain.
+        /// 0h = Normal (active-low)
+        /// 1h = Inverted (active-high)
+        /// Default: 0.
+        const APOL      = 0b0001_0000_0000_0000;
+
+        /// Bit is set if the 40-bit ENERGY register has overflowed. Bit is Read-Only.
+        /// Clears when ENERGY is read.
+        /// 0h = Normal
+        /// 1h = Overflow
+        /// Default: 0.
+        const ENERGYOF  = 0b0000_1000_0000_0000;
+
+        /// Bit is set if the 40-bit CHARGE register has overflowed. Bit is Read-Only.
+        /// Clears when CHARGE is read.
+        /// 0h = Normal
+        /// 1h = Overflow
+        /// Default: 0.
+        const CHARGEOF  = 0b0000_0100_0000_0000;
+
+        /// Bit is set if an arithmetic operation caused an overflow error. Current and power
+        /// data may be invalid. Cleared by triggering another conversion or by clearing the
+        /// accumulators with the RSTACC bit. Bit is Read-Only.
+        /// 0h = Normal
+        /// 1h = Overflow
+        /// Default: 0.
+        const MATHOF    = 0b0000_0010_0000_0000;
+
+        /// Bit is set if the die temperature exceeds the threshold in the TEMP_LIMIT register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Over Temperature Event
+        /// Default: 0.
+        const TMPOL     = 0b0000_0000_1000_0000;
+
+        /// Bit is set if the shunt voltage exceeds the threshold in the SOVL register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Over Shunt Voltage Event
+        /// Default: 0.
+        const SHNTOL    = 0b0000_0000_0100_0000;
+
+        /// Bit is set if the shunt voltage falls below the threshold in the SUVL register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Under Shunt Voltage Event
+        /// Default: 0.
+        const SHNTUL    = 0b0000_0000_0010_0000;
+
+        /// Bit is set if the bus voltage exceeds the threshold in the BOVL register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Bus Over-Limit Event
+        /// Default: 0.
+        const BUSOL     = 0b0000_0000_0001_0000;
+
+        /// Bit is set if the bus voltage falls below the threshold in the BUVL register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Bus Under-Limit Event
+        /// Default: 0.
+        const BUSUL     = 0b0000_0000_0000_1000;
+
+        /// Bit is set if the power measurement exceeds the threshold in the PWR_LIMIT register.
+        /// When ALATCH =1 this bit is cleared by reading this register.
+        /// 0h = Normal
+        /// 1h = Power Over-Limit Event
+        /// Default: 0.
+        const POL       = 0b0000_0000_0000_0100;
+
+        /// Bit is set when an ADC conversion cycle has completed.
+        /// When ALATCH =1 this bit is cleared by reading this register or by starting a new
+        /// triggered conversion.
+        /// 0h = Normal
+        /// 1h = Conversion is complete
+        /// Default: 0.
+        const CNVRF     = 0b0000_0000_0000_0010;
+
+        /// Reads 1h during normal operation. Reads 0h if a checksum error is detected in
+        /// the device's non-volatile trim memory.
+        /// 0h = Memory Checksum Error
+        /// 1h = Normal operation
+        /// Default: 1.
+        const MEMSTAT   = 0b0000_0000_0000_0001;
+    }
+}
+
 /// The SPI mode for the INA229.
 pub const MODE: Mode = MODE_1;
 

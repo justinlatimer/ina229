@@ -31,4 +31,4 @@
 #![no_std]
 
 pub mod ina229;
-pub use ina229::{Configuration, Error, INA229, MODE};
+pub use ina229::{Configuration, DiagAlert, Error, INA229, MODE};
