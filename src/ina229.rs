@@ -376,9 +376,8 @@ where
     pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError, CSError>> {
         self.read_register_u16(Register::Configuration)
             .map(Configuration::from_bits_truncate)
-            .map(|config| {
+            .inspect(|&config| {
                 self.config = Some(config);
-                config
             })
     }
 
