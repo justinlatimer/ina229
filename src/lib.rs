@@ -5,13 +5,13 @@
 //! [`embedded-hal`]: https://github.com/rust-embedded/embedded-hal
 //!
 //! This driver allows you to:
-//! - Callibrate the device. See [`callibrate()`].
+//! - Calibrate the device. See [`calibrate()`].
 //! - Read the shunt voltage. See [`shunt_voltage_nanovolts()`].
 //! - Read the bus voltage. See [`bus_voltage_microvolts()`].
 //! - Read the current. See [`current_amps()`].
 //! - Read the power. See [`power_watts()`].
 //!
-//! [`callibrate()`]: struct.INA229.html#method.callibrate
+//! [`calibrate()`]: struct.INA229.html#method.calibrate
 //! [`shunt_voltage_nanovolts()`]: struct.INA229.html#method.shunt_voltage_nanovolts
 //! [`bus_voltage_microvolts()`]: struct.INA229.html#method.bus_voltage_microvolts
 //! [`current_amps()`]: struct.INA229.html#method.current_amps
