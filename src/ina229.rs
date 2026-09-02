@@ -181,6 +181,8 @@ enum Register {
     Current = 0x07,
     Power = 0x08,
     DiagAlert = 0x0B,
+    SOVL = 0x0C,
+    SUVL = 0x0D,
     ManufacturerID = 0x3E,
     DeviceID = 0x3F,
 }
@@ -209,6 +211,10 @@ const SHUNT_VOLTAGE_NV_PER_LSB_MODE_0: f64 = 312.5;
 const SHUNT_VOLTAGE_NV_PER_LSB_MODE_1: f64 = 78.125;
 const TEMPERATURE_MC_PER_LSB: f64 = 7.8125;
 const POWER_SCALING_FACTOR: f64 = 3.2;
+
+// Alert threshold conversion constants
+const SHUNT_THRESHOLD_UV_PER_LSB_MODE_0: f64 = 5.0;
+const SHUNT_THRESHOLD_UV_PER_LSB_MODE_1: f64 = 1.25;
 
 // Calibration constants
 const DENOMINATOR: f64 = (1 << 19) as f64; // From Datasheet, 2^19
@@ -292,6 +298,14 @@ where
         self.ncs.set_high().map_err(Error::ChipSelectError)?;
         let value = BigEndian::read_i16(&buffer[1..3]);
         Ok(value)
+    }
+
+    fn write_register_i16(
+        &mut self,
+        register: Register,
+        value: i16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.write_register_u16(register, value as u16)
     }
 
     fn read_register_u24(&mut self, register: Register) -> Result<u32, Error<SPIError, CSError>> {
@@ -456,6 +470,65 @@ where
         } else {
             Err(Error::NotConfigured)
         }
+    }
+
+    /// Get Shunt threshold conversion given ADCRANGE.
+    fn shunt_threshold_microvolts_per_lsb(&mut self) -> Result<f64, Error<SPIError, CSError>> {
+        if let Some(config) = self.config {
+            Ok(if config.contains(Configuration::ADCRANGE) {
+                SHUNT_THRESHOLD_UV_PER_LSB_MODE_1
+            } else {
+                SHUNT_THRESHOLD_UV_PER_LSB_MODE_0
+            })
+        } else {
+            Err(Error::NotConfigured)
+        }
+    }
+
+    /// Get the raw shunt overvoltage threshold, from the SOVL register.
+    pub fn shunt_overvoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError, CSError>> {
+        self.read_register_i16(Register::SOVL)
+    }
+
+    /// Set the raw shunt overvoltage threshold, in the SOVL register.
+    pub fn set_shunt_overvoltage_threshold_raw(
+        &mut self,
+        value: i16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.write_register_i16(Register::SOVL, value)
+    }
+
+    /// Set the shunt overvoltage threshold in microvolts. Requires the INA229 to already
+    /// be configured, as the conversion factor depends on the ADCRANGE setting.
+    pub fn set_shunt_overvoltage_threshold_microvolts(
+        &mut self,
+        microvolts: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        let lsb = self.shunt_threshold_microvolts_per_lsb()?;
+        self.set_shunt_overvoltage_threshold_raw((microvolts / lsb) as i16)
+    }
+
+    /// Get the raw shunt undervoltage threshold, from the SUVL register.
+    pub fn shunt_undervoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError, CSError>> {
+        self.read_register_i16(Register::SUVL)
+    }
+
+    /// Set the raw shunt undervoltage threshold, in the SUVL register.
+    pub fn set_shunt_undervoltage_threshold_raw(
+        &mut self,
+        value: i16,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        self.write_register_i16(Register::SUVL, value)
+    }
+
+    /// Set the shunt undervoltage threshold in microvolts. Requires the device to already
+    /// be configured, as the conversion factor depends on the ADCRANGE setting.
+    pub fn set_shunt_undervoltage_threshold_microvolts(
+        &mut self,
+        microvolts: f64,
+    ) -> Result<(), Error<SPIError, CSError>> {
+        let lsb = self.shunt_threshold_microvolts_per_lsb()?;
+        self.set_shunt_undervoltage_threshold_raw((microvolts / lsb) as i16)
     }
 
     /// Get the unique manufacturer identification number.
