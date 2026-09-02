@@ -173,6 +173,7 @@ bitflags! {
 pub const MODE: Mode = MODE_1;
 
 #[repr(u8)]
+#[allow(clippy::upper_case_acronyms)]
 enum Register {
     Configuration = 0x00,
     ShuntCalibration = 0x02,
