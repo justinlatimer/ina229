@@ -252,6 +252,7 @@ const POWER_THRESHOLD_SCALING_FACTOR: f64 = 256.0;
 
 // Register maximum raw values
 const BUS_THRESHOLD_MAX_RAW: u16 = 0x7FFF; // From Datasheet (Tab. 7-19, 7-20), bit-15 reserved
+const SHUNT_CALIBRATION_MAX_RAW: u16 = 0x7FFF; // From Datasheet (Tab. 7-7), bit-15 reserved
 
 // Calibration constants
 const DENOMINATOR: f64 = (1 << 19) as f64; // From Datasheet, 2^19
@@ -404,11 +405,18 @@ where
     }
 
     /// Sets the shunt calibration register to the value provided.
+    /// Note: bit-15 of SHUNT_CAL is reserved, so we require value no larger than 0x7FFF.
     pub fn set_shunt_calibration(&mut self, value: u16) -> Result<(), Error<SPIError, CSError>> {
+        if value > SHUNT_CALIBRATION_MAX_RAW {
+            return Err(Error::InvalidRawValue(value));
+        }
         self.write_register_u16(Register::ShuntCalibration, value)
     }
 
     /// Calculate the shunt calibration value and write to the shunt calibration register.
+    /// Note: oversized inputs are rejected with [`Error::InvalidRawValue`]. Because the
+    /// computed value is cast to `u16` before validation, values beyond `u16::MAX` are
+    /// reported as `0xFFFF`.
     pub fn calibrate(
         &mut self,
         shunt_resistance: f64,
