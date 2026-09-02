@@ -13,7 +13,8 @@ use embedded_hal::{
 
 bitflags! {
     /// Configuration register contents.
-    #[repr(C)]
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    #[repr(transparent)]
     pub struct Configuration: u16 {
         /// Reset Bit. Setting this bit to '1' generates a system reset that is the same as power-on reset.
         /// Resets all registers to default values.
@@ -60,7 +61,8 @@ bitflags! {
     /// open-drain ALERT pin. The remaining bits are read-only status/diag flags that
     /// are set by the device. When [`DiagAlert::ALATCH`] is enabled, reading this reg
     /// clears any latched flags (see INA229 datasheet, Table 7-16).
-    #[repr(C)]
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    #[repr(transparent)]
     pub struct DiagAlert: u16 {
         /// Alert Latch Enable
         /// 0h = Transparent: the ALERT pin and flag bit clear as soon as the fault clears.
