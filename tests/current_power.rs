@@ -124,3 +124,91 @@ fn read_power_watts_works() {
     spi.done();
     ncs.done();
 }
+
+// POLT (Power Over-Limit Threshold) register tests
+#[test]
+fn read_power_overlimit_threshold_raw_works() {
+    // Arrange
+    let spi_expectations = [SPITransaction::transfer(
+        vec![0x45, 0x00, 0x00],
+        vec![0x00, 0x19, 0x00],
+    )];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+
+    // Act
+    let reading = ina229
+        .power_overlimit_threshold_raw()
+        .expect("reading to be returned");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    assert_eq!(reading, 6400);
+    spi.done();
+    ncs.done();
+}
+
+#[test]
+fn write_power_overlimit_threshold_raw_works() {
+    // Arrange
+    let spi_expectations = [SPITransaction::write(vec![0x44, 0x19, 0x00])];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+
+    // Act
+    ina229
+        .set_power_overlimit_threshold_raw(6400)
+        .expect("value to be written");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    spi.done();
+    ncs.done();
+}
+
+#[test]
+fn set_power_overlimit_threshold_watts_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::write(vec![0x00, 0x00, 0x00]),
+        SPITransaction::write(vec![0x08, 0x0F, 0xD2]),
+        SPITransaction::write(vec![0x44, 0x19, 0x00]),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+    ina229
+        .set_configuration(Configuration::from_bits_truncate(0))
+        .expect("configuration to be set");
+    ina229
+        .calibrate(0.0162, 10.0)
+        .expect("calibration to be set");
+
+    // Act
+    ina229
+        .set_power_overlimit_threshold_watts(100.0)
+        .expect("value to be written");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    spi.done();
+    ncs.done();
+}

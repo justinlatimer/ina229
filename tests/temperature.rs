@@ -53,3 +53,77 @@ fn read_temperature_millidegrees_celsius_works() {
     spi.done();
     ncs.done();
 }
+
+// TOLT (Temperature Over-Limit Threshold) register tests
+#[test]
+fn read_temperature_overlimit_threshold_raw_works() {
+    // Arrange
+    let spi_expectations = [SPITransaction::transfer(
+        vec![0x41, 0x00, 0x00],
+        vec![0x00, 0x0C, 0x80],
+    )];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+
+    // Act
+    let reading = ina229
+        .temperature_overlimit_threshold_raw()
+        .expect("reading to be returned");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    assert_eq!(reading, 3200);
+    spi.done();
+    ncs.done();
+}
+
+#[test]
+fn write_temperature_overlimit_threshold_raw_works() {
+    // Arrange
+    let spi_expectations = [SPITransaction::write(vec![0x40, 0x0C, 0x80])];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+
+    // Act
+    ina229
+        .set_temperature_overlimit_threshold_raw(3200)
+        .expect("value to be written");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    spi.done();
+    ncs.done();
+}
+
+#[test]
+fn set_temperature_overlimit_threshold_millidegrees_celsius_works() {
+    // Arrange
+    let spi_expectations = [SPITransaction::write(vec![0x40, 0x0C, 0x80])];
+    let spi = SPIMock::new(&spi_expectations);
+    let expectations = [
+        PinTransaction::set(PinState::Low),
+        PinTransaction::set(PinState::High),
+    ];
+    let ncs = PinMock::new(&expectations);
+    let mut ina229 = INA229::new(spi, ncs);
+
+    // Act
+    ina229
+        .set_temperature_overlimit_threshold_millidegrees_celsius(25000.0)
+        .expect("value to be written");
+
+    // Assert
+    let (mut spi, mut ncs) = ina229.release();
+    spi.done();
+    ncs.done();
+}
