@@ -1,5 +1,6 @@
 //! The INA229 driver itself, and the values it hands back.
 
+use core::fmt::{self, Debug, Display};
 use core::result::Result;
 
 use bitflags::bitflags;
@@ -172,6 +173,7 @@ bitflags! {
 pub const MODE: Mode = MODE_1;
 
 #[repr(u8)]
+#[allow(clippy::upper_case_acronyms)]
 enum Register {
     Configuration = 0x00,
     ShuntCalibration = 0x02,
@@ -197,7 +199,7 @@ enum Command {
 }
 
 /// Error type for INA229 commands.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error<SPIError, CSError> {
     /// The INA229 is not configured.
     NotConfigured,
@@ -210,6 +212,28 @@ pub enum Error<SPIError, CSError> {
 
     /// The raw value provided doesn't fit the register being written to.
     InvalidRawValue(u16),
+}
+
+impl<SPIError, CSError> Display for Error<SPIError, CSError>
+where
+    SPIError: Display,
+    CSError: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::NotConfigured => write!(f, "INA229 is not configured"),
+            Error::SPIError(error) => write!(f, "SPI transaction failed: {}", error),
+            Error::ChipSelectError(error) => write!(f, "chip select failed: {}", error),
+            Error::InvalidRawValue(value) => write!(f, "invalid raw value: {}", value),
+        }
+    }
+}
+
+impl<SPIError, CSError> core::error::Error for Error<SPIError, CSError>
+where
+    SPIError: Debug + Display,
+    CSError: Debug + Display,
+{
 }
 
 // Conversion constants
@@ -353,9 +377,8 @@ where
     pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError, CSError>> {
         self.read_register_u16(Register::Configuration)
             .map(Configuration::from_bits_truncate)
-            .map(|config| {
+            .inspect(|&config| {
                 self.config = Some(config);
-                config
             })
     }
 
