@@ -1,6 +1,9 @@
 //! This is a platform agnostic Rust driver for the [`INA229`], an SPI output
 //! current/voltage/power monitor with alerts, using the [`embedded-hal`] traits.
 //!
+//! [`INA229`] uses blocking SPI. Enabling the `async` Cargo feature additionally
+//! provides `INA229Async`, which uses `embedded-hal-async` SPI.
+//!
 //! [`INA229`]: https://www.ti.com/product/INA229
 //! [`embedded-hal`]: https://github.com/rust-embedded/embedded-hal
 //!
@@ -50,4 +53,8 @@
 #![no_std]
 
 pub mod ina229;
+
 pub use ina229::{Configuration, DiagAlert, Error, INA229, MODE};
+
+#[cfg(feature = "async")]
+pub use ina229::INA229Async;
