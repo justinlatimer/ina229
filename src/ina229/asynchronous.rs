@@ -1,6 +1,44 @@
 use super::*;
 use embedded_hal_async::spi::SpiDevice;
 
+/// Asynchronous INA229 voltage/current/power monitor.
+///
+/// This type is available when the `async` Cargo feature is enabled.
+///
+/// # Example
+///
+/// ```no_run
+/// # #[cfg(feature = "async")]
+/// # async fn example<SPI>(spi: SPI) -> Result<(), ina229::Error<SPI::Error>>
+/// # where
+/// #     SPI: embedded_hal_async::spi::SpiDevice<u8>,
+/// # {
+/// let mut monitor = ina229::INA229Async::new(spi);
+/// let voltage = monitor.bus_voltage_microvolts().await?;
+/// # let _ = voltage;
+/// # Ok(())
+/// # }
+/// ```
+pub struct INA229Async<SPI> {
+    spi: SPI,
+    state: State,
+}
+
+impl<SPI> INA229Async<SPI> {
+    /// Create a new asynchronous INA229 device.
+    pub fn new(spi: SPI) -> Self {
+        INA229Async {
+            spi,
+            state: State::default(),
+        }
+    }
+
+    /// Destroy the asynchronous INA229 instance and return the SPI device.
+    pub fn release(self) -> SPI {
+        self.spi
+    }
+}
+
 impl<SPI, SPIError> INA229Async<SPI>
 where
     SPI: SpiDevice<u8, Error = SPIError>,

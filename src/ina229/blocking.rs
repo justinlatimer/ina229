@@ -1,6 +1,41 @@
 use super::*;
 use embedded_hal::spi::SpiDevice;
 
+/// Blocking INA229 voltage/current/power monitor.
+///
+/// # Example
+///
+/// ```no_run
+/// # fn example<SPI>(spi: SPI) -> Result<(), ina229::Error<SPI::Error>>
+/// # where
+/// #     SPI: embedded_hal::spi::SpiDevice<u8>,
+/// # {
+/// let mut monitor = ina229::INA229::new(spi);
+/// let voltage = monitor.bus_voltage_microvolts()?;
+/// # let _ = voltage;
+/// # Ok(())
+/// # }
+/// ```
+pub struct INA229<SPI> {
+    spi: SPI,
+    state: State,
+}
+
+impl<SPI> INA229<SPI> {
+    /// Create a new instance of an INA229 device.
+    pub fn new(spi: SPI) -> Self {
+        INA229 {
+            spi,
+            state: State::default(),
+        }
+    }
+
+    /// Destroy the INA229 instance and return the SPI device.
+    pub fn release(self) -> SPI {
+        self.spi
+    }
+}
+
 impl<SPI, SPIError> INA229<SPI>
 where
     SPI: SpiDevice<u8, Error = SPIError>,

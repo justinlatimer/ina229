@@ -7,9 +7,13 @@ use bitflags::bitflags;
 use byteorder::{BigEndian, ByteOrder};
 use embedded_hal::spi::{Mode, MODE_1};
 
+mod blocking;
+pub use blocking::INA229;
+
 #[cfg(feature = "async")]
 mod asynchronous;
-mod blocking;
+#[cfg(feature = "async")]
+pub use asynchronous::INA229Async;
 
 bitflags! {
     /// Configuration register contents.
@@ -406,81 +410,6 @@ impl State {
     fn power_threshold_raw(&self, watts: f64) -> Option<u16> {
         self.current_lsb
             .map(|current_lsb| power_threshold_raw(current_lsb, watts))
-    }
-}
-
-/// Blocking INA229 voltage/current/power monitor.
-///
-/// # Example
-///
-/// ```no_run
-/// # fn example<SPI>(spi: SPI) -> Result<(), ina229::Error<SPI::Error>>
-/// # where
-/// #     SPI: embedded_hal::spi::SpiDevice<u8>,
-/// # {
-/// let mut monitor = ina229::INA229::new(spi);
-/// let voltage = monitor.bus_voltage_microvolts()?;
-/// # let _ = voltage;
-/// # Ok(())
-/// # }
-/// ```
-pub struct INA229<SPI> {
-    spi: SPI,
-    state: State,
-}
-
-impl<SPI> INA229<SPI> {
-    /// Create a new instance of an INA229 device.
-    pub fn new(spi: SPI) -> Self {
-        INA229 {
-            spi,
-            state: State::default(),
-        }
-    }
-
-    /// Destroy the INA229 instance and return the SPI device.
-    pub fn release(self) -> SPI {
-        self.spi
-    }
-}
-
-/// Asynchronous INA229 voltage/current/power monitor.
-///
-/// This type is available when the `async` Cargo feature is enabled.
-///
-/// # Example
-///
-/// ```no_run
-/// # #[cfg(feature = "async")]
-/// # async fn example<SPI>(spi: SPI) -> Result<(), ina229::Error<SPI::Error>>
-/// # where
-/// #     SPI: embedded_hal_async::spi::SpiDevice<u8>,
-/// # {
-/// let mut monitor = ina229::INA229Async::new(spi);
-/// let voltage = monitor.bus_voltage_microvolts().await?;
-/// # let _ = voltage;
-/// # Ok(())
-/// # }
-/// ```
-#[cfg(feature = "async")]
-pub struct INA229Async<SPI> {
-    spi: SPI,
-    state: State,
-}
-
-#[cfg(feature = "async")]
-impl<SPI> INA229Async<SPI> {
-    /// Create a new asynchronous INA229 device.
-    pub fn new(spi: SPI) -> Self {
-        INA229Async {
-            spi,
-            state: State::default(),
-        }
-    }
-
-    /// Destroy the asynchronous INA229 instance and return the SPI device.
-    pub fn release(self) -> SPI {
-        self.spi
     }
 }
 
