@@ -1,6 +1,3 @@
-use embedded_hal_mock::eh1::spi::{Mock as SPIMock, Transaction as SPITransaction};
-use ina229::INA229;
-
 #[test]
 fn read_manufacturer_id_works() {
     // Arrange
@@ -10,10 +7,10 @@ fn read_manufacturer_id_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let id = ina229.manufacturer_id().expect("id to be returned");
+    let id = invoke!(ina229.manufacturer_id()).expect("id to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -30,10 +27,10 @@ fn read_device_id_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let id = ina229.device_id().expect("id to be returned");
+    let id = invoke!(ina229.device_id()).expect("id to be returned");
 
     // Assert
     let mut spi = ina229.release();
