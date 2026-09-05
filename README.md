@@ -1,5 +1,9 @@
 # ina229
 
+[![Build](https://img.shields.io/github/actions/workflow/status/justinlatimer/ina229/ci.yml?branch=master)](https://github.com/justinlatimer/ina229/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/ina229)](https://crates.io/crates/ina229)
+[![docs.rs](https://img.shields.io/docsrs/ina229)](https://docs.rs/ina229)
+
 Rust `embedded-hal` driver for the Texas Instruments INA229.
 
 ## Blocking and async SPI
