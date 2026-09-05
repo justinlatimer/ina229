@@ -4,11 +4,12 @@ use core::fmt::{self, Debug, Display};
 use core::result::Result;
 
 use bitflags::bitflags;
-use byteorder::{BigEndian, ByteOrder};
 use embedded_hal::spi::{Mode, MODE_1};
 
 mod blocking;
 pub use blocking::INA229;
+
+mod registers;
 
 #[cfg(feature = "async")]
 mod asynchronous;
@@ -178,32 +179,6 @@ bitflags! {
 /// The SPI mode for the INA229.
 pub const MODE: Mode = MODE_1;
 
-#[repr(u8)]
-#[allow(clippy::upper_case_acronyms)]
-enum Register {
-    Configuration = 0x00,
-    ShuntCalibration = 0x02,
-    ShuntVoltage = 0x04,
-    BusVoltage = 0x05,
-    DieTemperature = 0x06,
-    Current = 0x07,
-    Power = 0x08,
-    DiagAlert = 0x0B,
-    SOVL = 0x0C,
-    SUVL = 0x0D,
-    BOVL = 0x0E,
-    BUVL = 0x0F,
-    TOLT = 0x10,
-    POLT = 0x11,
-    ManufacturerID = 0x3E,
-    DeviceID = 0x3F,
-}
-
-enum Command {
-    Read,
-    Write,
-}
-
 /// Error type for INA229 commands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error<SPIError> {
@@ -275,34 +250,6 @@ fn calculate_current_lsb(current_expected_max: f64) -> f64 {
     current_expected_max / DENOMINATOR
 }
 
-fn read_register_buffer<const LENGTH: usize>(register: Register) -> [u8; LENGTH] {
-    let mut buffer = [0; LENGTH];
-    buffer[0] = get_frame(register, Command::Read);
-    buffer
-}
-
-fn write_register_u16_buffer(register: Register, value: u16) -> [u8; 3] {
-    let mut buffer = [get_frame(register, Command::Write), 0x00, 0x00];
-    BigEndian::write_u16_into(&[value], &mut buffer[1..3]);
-    buffer
-}
-
-fn read_u16(buffer: &[u8]) -> u16 {
-    BigEndian::read_u16(buffer)
-}
-
-fn read_i16(buffer: &[u8]) -> i16 {
-    BigEndian::read_i16(buffer)
-}
-
-fn read_u24(buffer: &[u8]) -> u32 {
-    BigEndian::read_u24(buffer)
-}
-
-fn read_i24(buffer: &[u8]) -> i32 {
-    BigEndian::read_i24(buffer)
-}
-
 fn bus_voltage_microvolts_from_raw(value: i32) -> f64 {
     (value as f64) * BUS_VOLTAGE_UV_PER_LSB
 }
@@ -325,10 +272,6 @@ fn current_amps_from_raw(current_lsb: f64, value: i32) -> f64 {
 
 fn power_watts_from_raw(current_lsb: f64, value: u32) -> f64 {
     (value as f64) * current_lsb * POWER_SCALING_FACTOR
-}
-
-fn measurement_raw_from_register(value: i32) -> i32 {
-    value >> 4
 }
 
 fn alert_configuration_raw(configuration: DiagAlert) -> u16 {
@@ -413,33 +356,10 @@ impl State {
     }
 }
 
-fn get_frame(register: Register, command: Command) -> u8 {
-    let frame = (register as u8) << 2u8;
-    match command {
-        Command::Write => frame & !0b00000001,
-        Command::Read => frame | 0b00000001,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        calculate_calibration_value, calculate_current_lsb, get_frame, Command, Configuration,
-        Register,
-    };
+    use super::{calculate_calibration_value, calculate_current_lsb, Configuration};
     use approx::assert_relative_eq;
-
-    #[test]
-    fn get_frame_manufacturer_read() {
-        let result = get_frame(Register::ManufacturerID, Command::Read);
-        assert_eq!(result, 0b1111_1001);
-    }
-
-    #[test]
-    fn get_frame_device_read() {
-        let result = get_frame(Register::DeviceID, Command::Read);
-        assert_eq!(result, 0b1111_1101);
-    }
 
     #[test]
     fn calculate_current_lsb_works() {
