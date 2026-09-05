@@ -5,7 +5,15 @@ use core::result::Result;
 
 use bitflags::bitflags;
 use byteorder::{BigEndian, ByteOrder};
-use embedded_hal::spi::{Mode, SpiDevice, MODE_1};
+use embedded_hal::spi::{Mode, MODE_1};
+
+mod blocking;
+pub use blocking::INA229;
+
+#[cfg(feature = "async")]
+mod asynchronous;
+#[cfg(feature = "async")]
+pub use asynchronous::INA229Async;
 
 bitflags! {
     /// Configuration register contents.
@@ -267,398 +275,141 @@ fn calculate_current_lsb(current_expected_max: f64) -> f64 {
     current_expected_max / DENOMINATOR
 }
 
-/// INA229 voltage/current/power monitor
-pub struct INA229<SPI> {
-    spi: SPI,
+fn read_register_buffer<const LENGTH: usize>(register: Register) -> [u8; LENGTH] {
+    let mut buffer = [0; LENGTH];
+    buffer[0] = get_frame(register, Command::Read);
+    buffer
+}
+
+fn write_register_u16_buffer(register: Register, value: u16) -> [u8; 3] {
+    let mut buffer = [get_frame(register, Command::Write), 0x00, 0x00];
+    BigEndian::write_u16_into(&[value], &mut buffer[1..3]);
+    buffer
+}
+
+fn read_u16(buffer: &[u8]) -> u16 {
+    BigEndian::read_u16(buffer)
+}
+
+fn read_i16(buffer: &[u8]) -> i16 {
+    BigEndian::read_i16(buffer)
+}
+
+fn read_u24(buffer: &[u8]) -> u32 {
+    BigEndian::read_u24(buffer)
+}
+
+fn read_i24(buffer: &[u8]) -> i32 {
+    BigEndian::read_i24(buffer)
+}
+
+fn bus_voltage_microvolts_from_raw(value: i32) -> f64 {
+    (value as f64) * BUS_VOLTAGE_UV_PER_LSB
+}
+
+fn shunt_voltage_nanovolts_from_raw(configuration: Configuration, value: i32) -> f64 {
+    if configuration.contains(Configuration::ADCRANGE) {
+        (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_1
+    } else {
+        (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_0
+    }
+}
+
+fn temperature_millidegrees_celsius_from_raw(value: i16) -> f64 {
+    (value as f64) * TEMPERATURE_MC_PER_LSB
+}
+
+fn current_amps_from_raw(current_lsb: f64, value: i32) -> f64 {
+    (value as f64) * current_lsb
+}
+
+fn power_watts_from_raw(current_lsb: f64, value: u32) -> f64 {
+    (value as f64) * current_lsb * POWER_SCALING_FACTOR
+}
+
+fn measurement_raw_from_register(value: i32) -> i32 {
+    value >> 4
+}
+
+fn alert_configuration_raw(configuration: DiagAlert) -> u16 {
+    let mask = DiagAlert::ALATCH | DiagAlert::CNVR | DiagAlert::SLOWALERT | DiagAlert::APOL;
+    (configuration & mask).bits()
+}
+
+fn shunt_threshold_microvolts_per_lsb(configuration: Configuration) -> f64 {
+    if configuration.contains(Configuration::ADCRANGE) {
+        SHUNT_THRESHOLD_UV_PER_LSB_MODE_1
+    } else {
+        SHUNT_THRESHOLD_UV_PER_LSB_MODE_0
+    }
+}
+
+fn shunt_threshold_raw(configuration: Configuration, microvolts: f64) -> i16 {
+    (microvolts / shunt_threshold_microvolts_per_lsb(configuration)) as i16
+}
+
+fn bus_threshold_raw(millivolts: f64) -> u16 {
+    (millivolts / BUS_THRESHOLD_MV_PER_LSB) as u16
+}
+
+fn temperature_threshold_raw(millidegrees_celsius: f64) -> i16 {
+    (millidegrees_celsius / TEMPERATURE_THRESHOLD_MC_PER_LSB) as i16
+}
+
+fn power_threshold_raw(current_lsb: f64, watts: f64) -> u16 {
+    let lsb = POWER_THRESHOLD_SCALING_FACTOR * current_lsb * POWER_SCALING_FACTOR;
+    (watts / lsb) as u16
+}
+
+fn validate_raw_value<SPIError>(value: u16, maximum: u16) -> Result<(), Error<SPIError>> {
+    if value > maximum {
+        Err(Error::InvalidRawValue(value))
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct State {
     config: Option<Configuration>,
     current_lsb: Option<f64>,
 }
 
-impl<SPI, SPIError> INA229<SPI>
-where
-    SPI: SpiDevice<u8, Error = SPIError>,
-{
-    /// Create a new instance of an INA229 device.
-    pub fn new(spi: SPI) -> Self {
-        INA229 {
-            spi,
-            config: None,
-            current_lsb: None,
-        }
+impl State {
+    fn configuration(&self) -> Option<Configuration> {
+        self.config
     }
 
-    /// Destroy the INA229 instance and return the SPI device.
-    pub fn release(self) -> SPI {
-        self.spi
-    }
-
-    fn read_register_u16(&mut self, register: Register) -> Result<u16, Error<SPIError>> {
-        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00];
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        let value = BigEndian::read_u16(&buffer[1..3]);
-        Ok(value)
-    }
-
-    fn write_register_u16(
-        &mut self,
-        register: Register,
-        value: u16,
-    ) -> Result<(), Error<SPIError>> {
-        let mut buffer = [get_frame(register, Command::Write), 0x00, 0x00];
-        BigEndian::write_u16_into(&[value], &mut buffer[1..3]);
-        self.spi.write(&buffer).map_err(Error::SPIError)?;
-        Ok(())
-    }
-
-    fn read_register_i16(&mut self, register: Register) -> Result<i16, Error<SPIError>> {
-        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00];
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        let value = BigEndian::read_i16(&buffer[1..3]);
-        Ok(value)
-    }
-
-    fn write_register_i16(
-        &mut self,
-        register: Register,
-        value: i16,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(register, value as u16)
-    }
-
-    fn read_register_u24(&mut self, register: Register) -> Result<u32, Error<SPIError>> {
-        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00, 0x00];
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        let value = BigEndian::read_u24(&buffer[1..4]);
-        Ok(value)
-    }
-
-    fn read_register_i24(&mut self, register: Register) -> Result<i32, Error<SPIError>> {
-        let mut buffer = [get_frame(register, Command::Read), 0x00, 0x00, 0x00];
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        let value = BigEndian::read_i24(&buffer[1..4]);
-        Ok(value)
-    }
-
-    /// Sets the CONFIG register with the value provided.
-    pub fn set_configuration(
-        &mut self,
-        configuration: Configuration,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(Register::Configuration, configuration.bits())?;
+    fn set_configuration(&mut self, configuration: Configuration) {
         self.config = Some(configuration);
-        Ok(())
     }
 
-    /// Get the configuration.
-    pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError>> {
-        self.read_register_u16(Register::Configuration)
-            .map(Configuration::from_bits_truncate)
-            .inspect(|&config| {
-                self.config = Some(config);
-            })
-    }
-
-    /// Configure ALERT pin behaviour by writing to the DIAG_ALERT register.
-    pub fn set_alert_configuration(
-        &mut self,
-        configuration: DiagAlert,
-    ) -> Result<(), Error<SPIError>> {
-        let mask = DiagAlert::ALATCH | DiagAlert::CNVR | DiagAlert::SLOWALERT | DiagAlert::APOL;
-        self.write_register_u16(Register::DiagAlert, (configuration & mask).bits())
-    }
-
-    /// Read the DIAG_ALERT register, giving the current ALERT pin configuration.
-    /// Note: if [`DiagAlert::ALATCH`] is enabled, reading this register clears the ALERT pin.
-    pub fn alert_configuration(&mut self) -> Result<DiagAlert, Error<SPIError>> {
-        self.read_register_u16(Register::DiagAlert)
-            .map(DiagAlert::from_bits_truncate)
-    }
-
-    /// Gets the value from the shunt calibration register.
-    pub fn shunt_calibration(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::ShuntCalibration)
-    }
-
-    /// Sets the shunt calibration register to the value provided.
-    /// Note: bit-15 of SHUNT_CAL is reserved, so we require value no larger than 0x7FFF.
-    pub fn set_shunt_calibration(&mut self, value: u16) -> Result<(), Error<SPIError>> {
-        if value > SHUNT_CALIBRATION_MAX_RAW {
-            return Err(Error::InvalidRawValue(value));
-        }
-        self.write_register_u16(Register::ShuntCalibration, value)
-    }
-
-    /// Calculate the shunt calibration value and write to the shunt calibration register.
-    /// Note: oversized inputs are rejected with [`Error::InvalidRawValue`]. Because the
-    /// computed value is cast to `u16` before validation, values beyond `u16::MAX` are
-    /// reported as `0xFFFF`.
-    pub fn calibrate(
-        &mut self,
+    fn calibration_value(
+        &self,
         shunt_resistance: f64,
         current_expected_max: f64,
-    ) -> Result<(), Error<SPIError>> {
-        if let Some(config) = self.config {
-            let (current_lsb, value) =
-                calculate_calibration_value(config, shunt_resistance, current_expected_max);
-            self.set_shunt_calibration(value)?;
-            self.current_lsb = Some(current_lsb);
-            Ok(())
-        } else {
-            Err(Error::NotConfigured)
-        }
+    ) -> Option<(f64, u16)> {
+        self.config.map(|configuration| {
+            calculate_calibration_value(configuration, shunt_resistance, current_expected_max)
+        })
     }
 
-    /// Calculate the shunt calibration value and write to the shunt calibration register.
-    pub fn configure_and_calibrate(
-        &mut self,
-        configuration: Configuration,
-        shunt_resistance: f64,
-        current_expected_max: f64,
-    ) -> Result<(), Error<SPIError>> {
-        self.set_configuration(configuration)
-            .and_then(|_| self.calibrate(shunt_resistance, current_expected_max))
+    fn set_current_lsb(&mut self, current_lsb: f64) {
+        self.current_lsb = Some(current_lsb);
     }
 
-    /// Get the raw bus voltage reading.
-    pub fn bus_voltage_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::BusVoltage).map(|x| x >> 4) // 20bit value.
+    fn current_lsb(&self) -> Option<f64> {
+        self.current_lsb
     }
 
-    /// Get the bus voltage reading in microvolts.
-    pub fn bus_voltage_microvolts(&mut self) -> Result<f64, Error<SPIError>> {
-        self.bus_voltage_raw()
-            .map(|x| (x as f64) * BUS_VOLTAGE_UV_PER_LSB)
+    fn shunt_threshold_raw(&self, microvolts: f64) -> Option<i16> {
+        self.config
+            .map(|configuration| shunt_threshold_raw(configuration, microvolts))
     }
 
-    /// Get the raw shunt voltage reading.
-    pub fn shunt_voltage_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::ShuntVoltage)
-            .map(|x| x >> 4)
-    }
-
-    /// Get the shunt voltage reading in nanovolts.
-    pub fn shunt_voltage_nanovolts(&mut self) -> Result<f64, Error<SPIError>> {
-        if let Some(config) = self.config {
-            self.shunt_voltage_raw().map(|value| {
-                if config.contains(Configuration::ADCRANGE) {
-                    (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_1
-                } else {
-                    (value as f64) * SHUNT_VOLTAGE_NV_PER_LSB_MODE_0
-                }
-            })
-        } else {
-            Err(Error::NotConfigured)
-        }
-    }
-
-    /// Get the raw die temperature value.
-    pub fn temperature_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::DieTemperature)
-    }
-
-    /// Get the die temperature in millidegrees Celsius.
-    pub fn temperature_millidegrees_celsius(&mut self) -> Result<f64, Error<SPIError>> {
-        self.temperature_raw()
-            .map(|x| (x as f64) * TEMPERATURE_MC_PER_LSB)
-    }
-
-    /// Get the raw value from the current register.
-    pub fn current_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::Current).map(|x| x >> 4) // 20bit value.
-    }
-
-    /// Get the current reading in Amps.
-    pub fn current_amps(&mut self) -> Result<f64, Error<SPIError>> {
-        if let Some(current_lsb) = self.current_lsb {
-            self.current_raw().map(|x| (x as f64) * current_lsb)
-        } else {
-            Err(Error::NotConfigured)
-        }
-    }
-
-    /// Get the raw value from the power register
-    pub fn power_raw(&mut self) -> Result<u32, Error<SPIError>> {
-        self.read_register_u24(Register::Power)
-    }
-
-    /// Get the power reading in Watts.
-    pub fn power_watts(&mut self) -> Result<f64, Error<SPIError>> {
-        if let Some(current_lsb) = self.current_lsb {
-            self.power_raw()
-                .map(|x| (x as f64) * current_lsb * POWER_SCALING_FACTOR)
-        } else {
-            Err(Error::NotConfigured)
-        }
-    }
-
-    /// Get Shunt threshold conversion given ADCRANGE.
-    fn shunt_threshold_microvolts_per_lsb(&mut self) -> Result<f64, Error<SPIError>> {
-        if let Some(config) = self.config {
-            Ok(if config.contains(Configuration::ADCRANGE) {
-                SHUNT_THRESHOLD_UV_PER_LSB_MODE_1
-            } else {
-                SHUNT_THRESHOLD_UV_PER_LSB_MODE_0
-            })
-        } else {
-            Err(Error::NotConfigured)
-        }
-    }
-
-    /// Get the raw shunt overvoltage threshold, from the SOVL register.
-    pub fn shunt_overvoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::SOVL)
-    }
-
-    /// Set the raw shunt overvoltage threshold, in the SOVL register.
-    pub fn set_shunt_overvoltage_threshold_raw(
-        &mut self,
-        value: i16,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::SOVL, value)
-    }
-
-    /// Set the shunt overvoltage threshold in microvolts. Requires the INA229 to already
-    /// be configured, as the conversion factor depends on the ADCRANGE setting.
-    pub fn set_shunt_overvoltage_threshold_microvolts(
-        &mut self,
-        microvolts: f64,
-    ) -> Result<(), Error<SPIError>> {
-        let lsb = self.shunt_threshold_microvolts_per_lsb()?;
-        self.set_shunt_overvoltage_threshold_raw((microvolts / lsb) as i16)
-    }
-
-    /// Get the raw shunt undervoltage threshold, from the SUVL register.
-    pub fn shunt_undervoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::SUVL)
-    }
-
-    /// Set the raw shunt undervoltage threshold, in the SUVL register.
-    pub fn set_shunt_undervoltage_threshold_raw(
-        &mut self,
-        value: i16,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::SUVL, value)
-    }
-
-    /// Set the shunt undervoltage threshold in microvolts. Requires the device to already
-    /// be configured, as the conversion factor depends on the ADCRANGE setting.
-    pub fn set_shunt_undervoltage_threshold_microvolts(
-        &mut self,
-        microvolts: f64,
-    ) -> Result<(), Error<SPIError>> {
-        let lsb = self.shunt_threshold_microvolts_per_lsb()?;
-        self.set_shunt_undervoltage_threshold_raw((microvolts / lsb) as i16)
-    }
-
-    /// Get the raw bus overvoltage threshold, from the BOVL register.
-    pub fn bus_overvoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::BOVL)
-    }
-
-    /// Set the raw bus overvoltage threshold, in the BOVL register.
-    /// Note: bit-15 of BOVL is reserved, so we require value no larger than 0x7FFF.
-    pub fn set_bus_overvoltage_threshold_raw(&mut self, value: u16) -> Result<(), Error<SPIError>> {
-        if value > BUS_THRESHOLD_MAX_RAW {
-            return Err(Error::InvalidRawValue(value));
-        }
-        self.write_register_u16(Register::BOVL, value)
-    }
-
-    /// Set the bus overvoltage threshold in millivolts.
-    pub fn set_bus_overvoltage_threshold_millivolts(
-        &mut self,
-        millivolts: f64,
-    ) -> Result<(), Error<SPIError>> {
-        self.set_bus_overvoltage_threshold_raw((millivolts / BUS_THRESHOLD_MV_PER_LSB) as u16)
-    }
-
-    /// Get the raw bus undervoltage threshold, from the BUVL register.
-    pub fn bus_undervoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::BUVL)
-    }
-
-    /// Set the raw bus undervoltage threshold, in the BUVL register.
-    /// Note: bit-15 of BUVL is reserved, so we require value no larger than 0x7FFF.
-    pub fn set_bus_undervoltage_threshold_raw(
-        &mut self,
-        value: u16,
-    ) -> Result<(), Error<SPIError>> {
-        if value > BUS_THRESHOLD_MAX_RAW {
-            return Err(Error::InvalidRawValue(value));
-        }
-        self.write_register_u16(Register::BUVL, value)
-    }
-
-    /// Set the bus undervoltage threshold in millivolts.
-    pub fn set_bus_undervoltage_threshold_millivolts(
-        &mut self,
-        millivolts: f64,
-    ) -> Result<(), Error<SPIError>> {
-        self.set_bus_undervoltage_threshold_raw((millivolts / BUS_THRESHOLD_MV_PER_LSB) as u16)
-    }
-
-    /// Get the raw temperature over-limit threshold, from the TEMP_LIMIT register.
-    pub fn temperature_overlimit_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::TOLT)
-    }
-
-    /// Set the raw temperature over-limit threshold, in the TEMP_LIMIT register.
-    pub fn set_temperature_overlimit_threshold_raw(
-        &mut self,
-        value: i16,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::TOLT, value)
-    }
-
-    /// Set the temperature over-limit threshold in millidegrees Celsius.
-    pub fn set_temperature_overlimit_threshold_millidegrees_celsius(
-        &mut self,
-        millidegrees_celsius: f64,
-    ) -> Result<(), Error<SPIError>> {
-        self.set_temperature_overlimit_threshold_raw(
-            (millidegrees_celsius / TEMPERATURE_THRESHOLD_MC_PER_LSB) as i16,
-        )
-    }
-
-    /// Get the raw power over-limit threshold, from the PWR_LIMIT register.
-    pub fn power_overlimit_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::POLT)
-    }
-
-    /// Set the raw power over-limit threshold, in the PWR_LIMIT register.
-    pub fn set_power_overlimit_threshold_raw(&mut self, value: u16) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(Register::POLT, value)
-    }
-
-    /// Se the power over-limit threshold in watts. Requires device to be calibrated.
-    pub fn set_power_overlimit_threshold_watts(
-        &mut self,
-        watts: f64,
-    ) -> Result<(), Error<SPIError>> {
-        if let Some(current_lsb) = self.current_lsb {
-            let lsb = POWER_THRESHOLD_SCALING_FACTOR * current_lsb * POWER_SCALING_FACTOR;
-            self.set_power_overlimit_threshold_raw((watts / lsb) as u16)
-        } else {
-            Err(Error::NotConfigured)
-        }
-    }
-
-    /// Get the unique manufacturer identification number.
-    pub fn manufacturer_id(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::ManufacturerID)
-    }
-
-    /// Get the unique die identification number.
-    pub fn device_id(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::DeviceID)
+    fn power_threshold_raw(&self, watts: f64) -> Option<u16> {
+        self.current_lsb
+            .map(|current_lsb| power_threshold_raw(current_lsb, watts))
     }
 }
 

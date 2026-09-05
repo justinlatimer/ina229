@@ -1,6 +1,3 @@
-use embedded_hal_mock::eh1::spi::{Mock as SPIMock, Transaction as SPITransaction};
-use ina229::{Configuration, INA229};
-
 #[test]
 fn read_shunt_calibration_works() {
     // Arrange
@@ -10,10 +7,10 @@ fn read_shunt_calibration_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229.shunt_calibration().expect("reading to be returned");
+    let reading = invoke!(ina229.shunt_calibration()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -30,12 +27,10 @@ fn write_shunt_calibration_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_shunt_calibration(4096)
-        .expect("write to succeed");
+    invoke!(ina229.set_shunt_calibration(4096)).expect("write to succeed");
 
     // Assert
     let mut spi = ina229.release();
@@ -48,10 +43,10 @@ fn set_shunt_calibration_rejects_reserved_bit() {
     // Arrange: bit-15 set (0x8000) must be rejected before any SPI traffic occurs.
     let spi_expectations = [];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let result = ina229.set_shunt_calibration(0x8000);
+    let result = invoke!(ina229.set_shunt_calibration(0x8000));
 
     // Assert
     let mut spi = ina229.release();
@@ -71,12 +66,10 @@ fn set_shunt_calibration_accepts_max_valid_value() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_shunt_calibration(0x7FFF)
-        .expect("value to be written");
+    invoke!(ina229.set_shunt_calibration(0x7FFF)).expect("value to be written");
 
     // Assert
     let mut spi = ina229.release();
@@ -95,15 +88,35 @@ fn calibrate_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("config to be set");
 
     // Act
-    ina229
-        .calibrate(0.0162, 10.0)
-        .expect("calibration to succeed");
+    invoke!(ina229.calibrate(0.0162, 10.0)).expect("calibration to succeed");
+
+    // Assert
+    let mut spi = ina229.release();
+    spi.done();
+}
+
+#[test]
+fn configure_and_calibrate_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::write_vec(vec![0x00, 0x00, 0x00]),
+        SPITransaction::transaction_end(),
+        SPITransaction::transaction_start(),
+        SPITransaction::write_vec(vec![0x08, 0x0F, 0xD2]),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    invoke!(ina229.configure_and_calibrate(Configuration::empty(), 0.0162, 10.0))
+        .expect("configuration and calibration to succeed");
 
     // Assert
     let mut spi = ina229.release();
@@ -121,13 +134,12 @@ fn calibrate_rejects_shunt_calibration_value_over_max() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("config to be set");
 
     // Act
-    let result = ina229.calibrate(1.0, 100000.0);
+    let result = invoke!(ina229.calibrate(1.0, 100000.0));
 
     // Assert
     let mut spi = ina229.release();

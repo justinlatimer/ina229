@@ -1,6 +1,3 @@
-use embedded_hal_mock::eh1::spi::{Mock as SPIMock, Transaction as SPITransaction};
-use ina229::{DiagAlert, INA229};
-
 #[test]
 fn read_alert_configuration_default_reset_value_works() {
     // Arrange: DIAG_ALRT resets to 0001h (MEMSTAT set, everything else clear).
@@ -10,10 +7,10 @@ fn read_alert_configuration_default_reset_value_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let flags = ina229.alert_configuration().expect("flags to be returned");
+    let flags = invoke!(ina229.alert_configuration()).expect("flags to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -32,10 +29,10 @@ fn read_alert_configuration_parses_diagnostic_status_flags_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let flags = ina229.alert_configuration().expect("flags to be returned");
+    let flags = invoke!(ina229.alert_configuration()).expect("flags to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -65,10 +62,10 @@ fn read_alert_configuration_parses_pin_config_and_overflow_flags_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let flags = ina229.alert_configuration().expect("flags to be returned");
+    let flags = invoke!(ina229.alert_configuration()).expect("flags to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -101,11 +98,10 @@ fn set_alert_configuration_writes_single_bit_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_alert_configuration(DiagAlert::APOL)
+    invoke!(ina229.set_alert_configuration(DiagAlert::APOL))
         .expect("configuration to be written");
 
     // Assert
@@ -122,14 +118,13 @@ fn set_alert_configuration_writes_all_four_configurable_bits_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_alert_configuration(
-            DiagAlert::ALATCH | DiagAlert::CNVR | DiagAlert::SLOWALERT | DiagAlert::APOL,
-        )
-        .expect("configuration to be written");
+    invoke!(ina229.set_alert_configuration(
+        DiagAlert::ALATCH | DiagAlert::CNVR | DiagAlert::SLOWALERT | DiagAlert::APOL,
+    ))
+    .expect("configuration to be written");
 
     // Assert
     let mut spi = ina229.release();
@@ -145,11 +140,10 @@ fn set_alert_configuration_clears_all_configurable_bits_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_alert_configuration(DiagAlert::empty())
+    invoke!(ina229.set_alert_configuration(DiagAlert::empty()))
         .expect("configuration to be written");
 
     // Assert
@@ -168,12 +162,13 @@ fn set_alert_configuration_masks_out_read_only_status_bits_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act: request APOL (writeable) alongside two read-only diagnostic flags.
-    ina229
-        .set_alert_configuration(DiagAlert::APOL | DiagAlert::SHNTOL | DiagAlert::MATHOF)
-        .expect("configuration to be written");
+    invoke!(ina229.set_alert_configuration(
+        DiagAlert::APOL | DiagAlert::SHNTOL | DiagAlert::MATHOF,
+    ))
+    .expect("configuration to be written");
 
     // Assert: only APOL is written
     let mut spi = ina229.release();
@@ -192,13 +187,12 @@ fn toggle_apol_then_confirm_via_alert_configuration_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act: invert the ALERT pin polarity with APOL, then read the register back to confirm
-    ina229
-        .set_alert_configuration(DiagAlert::APOL)
+    invoke!(ina229.set_alert_configuration(DiagAlert::APOL))
         .expect("configuration to be written");
-    let flags = ina229.alert_configuration().expect("flags to be returned");
+    let flags = invoke!(ina229.alert_configuration()).expect("flags to be returned");
 
     // Assert
     let mut spi = ina229.release();

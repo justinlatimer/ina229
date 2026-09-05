@@ -1,6 +1,3 @@
-use embedded_hal_mock::eh1::spi::{Mock as SPIMock, Transaction as SPITransaction};
-use ina229::{Configuration, INA229};
-
 #[test]
 fn read_bus_voltage_raw_works() {
     // Arrange
@@ -13,10 +10,10 @@ fn read_bus_voltage_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229.bus_voltage_raw().expect("reading to be returned");
+    let reading = invoke!(ina229.bus_voltage_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -36,12 +33,10 @@ fn read_bus_voltage_microvolts_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .bus_voltage_microvolts()
-        .expect("reading to be returned");
+    let reading = invoke!(ina229.bus_voltage_microvolts()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -61,10 +56,10 @@ fn read_shunt_voltage_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229.shunt_voltage_raw().expect("reading to be returned");
+    let reading = invoke!(ina229.shunt_voltage_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -87,15 +82,12 @@ fn read_shunt_voltage_nanovolts_adcmode_0_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("config to be set");
 
     // Act
-    let reading = ina229
-        .shunt_voltage_nanovolts()
-        .expect("reading to be returned");
+    let reading = invoke!(ina229.shunt_voltage_nanovolts()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -118,15 +110,11 @@ fn read_shunt_voltage_nanovolts_adcmode_1_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::ADCRANGE)
-        .expect("config to be set");
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::ADCRANGE)).expect("config to be set");
 
     // Act
-    let reading = ina229
-        .shunt_voltage_nanovolts()
-        .expect("reading to be returned");
+    let reading = invoke!(ina229.shunt_voltage_nanovolts()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -144,12 +132,11 @@ fn read_shunt_overvoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .shunt_overvoltage_threshold_raw()
-        .expect("reading to be returned");
+    let reading =
+        invoke!(ina229.shunt_overvoltage_threshold_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -166,11 +153,10 @@ fn write_shunt_overvoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_shunt_overvoltage_threshold_raw(32400)
+    invoke!(ina229.set_shunt_overvoltage_threshold_raw(32400))
         .expect("value to be written");
 
     // Assert
@@ -190,14 +176,12 @@ fn set_shunt_overvoltage_threshold_microvolts_adcmode_0_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("config to be set");
 
     // Act
-    ina229
-        .set_shunt_overvoltage_threshold_microvolts(162000.0)
+    invoke!(ina229.set_shunt_overvoltage_threshold_microvolts(162000.0))
         .expect("value to be written");
 
     // Assert
@@ -217,14 +201,11 @@ fn set_shunt_overvoltage_threshold_microvolts_adcmode_1_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::ADCRANGE)
-        .expect("config to be set");
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::ADCRANGE)).expect("config to be set");
 
     // Act
-    ina229
-        .set_shunt_overvoltage_threshold_microvolts(40500.0)
+    invoke!(ina229.set_shunt_overvoltage_threshold_microvolts(40500.0))
         .expect("value to be written");
 
     // Assert
@@ -242,12 +223,11 @@ fn read_shunt_undervoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .shunt_undervoltage_threshold_raw()
-        .expect("reading to be returned");
+    let reading =
+        invoke!(ina229.shunt_undervoltage_threshold_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -264,11 +244,10 @@ fn write_shunt_undervoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_shunt_undervoltage_threshold_raw(-32400)
+    invoke!(ina229.set_shunt_undervoltage_threshold_raw(-32400))
         .expect("value to be written");
 
     // Assert
@@ -288,14 +267,12 @@ fn set_shunt_undervoltage_threshold_microvolts_adcmode_0_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("config to be set");
 
     // Act
-    ina229
-        .set_shunt_undervoltage_threshold_microvolts(-162000.0)
+    invoke!(ina229.set_shunt_undervoltage_threshold_microvolts(-162000.0))
         .expect("value to be written");
 
     // Assert
@@ -315,14 +292,11 @@ fn set_shunt_undervoltage_threshold_microvolts_adcmode_1_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::ADCRANGE)
-        .expect("config to be set");
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::ADCRANGE)).expect("config to be set");
 
     // Act
-    ina229
-        .set_shunt_undervoltage_threshold_microvolts(-40500.0)
+    invoke!(ina229.set_shunt_undervoltage_threshold_microvolts(-40500.0))
         .expect("value to be written");
 
     // Assert
@@ -340,12 +314,11 @@ fn read_bus_overvoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .bus_overvoltage_threshold_raw()
-        .expect("reading to be returned");
+    let reading =
+        invoke!(ina229.bus_overvoltage_threshold_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -362,11 +335,10 @@ fn write_bus_overvoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_overvoltage_threshold_raw(16640)
+    invoke!(ina229.set_bus_overvoltage_threshold_raw(16640))
         .expect("value to be written");
 
     // Assert
@@ -383,11 +355,10 @@ fn set_bus_overvoltage_threshold_millivolts_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_overvoltage_threshold_millivolts(52000.0)
+    invoke!(ina229.set_bus_overvoltage_threshold_millivolts(52000.0))
         .expect("value to be written");
 
     // Assert
@@ -405,12 +376,11 @@ fn read_bus_undervoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .bus_undervoltage_threshold_raw()
-        .expect("reading to be returned");
+    let reading =
+        invoke!(ina229.bus_undervoltage_threshold_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -427,11 +397,10 @@ fn write_bus_undervoltage_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_undervoltage_threshold_raw(3200)
+    invoke!(ina229.set_bus_undervoltage_threshold_raw(3200))
         .expect("value to be written");
 
     // Assert
@@ -448,11 +417,10 @@ fn set_bus_undervoltage_threshold_millivolts_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_undervoltage_threshold_millivolts(10000.0)
+    invoke!(ina229.set_bus_undervoltage_threshold_millivolts(10000.0))
         .expect("value to be written");
 
     // Assert
@@ -466,10 +434,10 @@ fn set_bus_overvoltage_threshold_raw_rejects_reserved_bit_works() {
     // Arrange: bit-15 set (0x8000) must be rejected before any SPI traffic occurs.
     let spi_expectations = [];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let result = ina229.set_bus_overvoltage_threshold_raw(0x8000);
+    let result = invoke!(ina229.set_bus_overvoltage_threshold_raw(0x8000));
 
     // Assert
     let mut spi = ina229.release();
@@ -489,11 +457,10 @@ fn set_bus_overvoltage_threshold_raw_accepts_max_valid_value_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_overvoltage_threshold_raw(0x7FFF)
+    invoke!(ina229.set_bus_overvoltage_threshold_raw(0x7FFF))
         .expect("value to be written");
 
     // Assert
@@ -507,10 +474,10 @@ fn set_bus_overvoltage_threshold_millivolts_rejects_out_of_range_value_works() {
     // (200000.0 / 3.125 = 64000, i.e. raw 0xFA00, which has bit-15 set).
     let spi_expectations = [];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let result = ina229.set_bus_overvoltage_threshold_millivolts(200000.0);
+    let result = invoke!(ina229.set_bus_overvoltage_threshold_millivolts(200000.0));
 
     // Assert
     let mut spi = ina229.release();
@@ -523,10 +490,10 @@ fn set_bus_undervoltage_threshold_raw_rejects_reserved_bit_works() {
     // Arrange
     let spi_expectations = [];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let result = ina229.set_bus_undervoltage_threshold_raw(0x8000);
+    let result = invoke!(ina229.set_bus_undervoltage_threshold_raw(0x8000));
 
     // Assert
     let mut spi = ina229.release();
@@ -546,11 +513,10 @@ fn set_bus_undervoltage_threshold_raw_accepts_max_valid_value_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_bus_undervoltage_threshold_raw(0x7FFF)
+    invoke!(ina229.set_bus_undervoltage_threshold_raw(0x7FFF))
         .expect("value to be written");
 
     // Assert
@@ -563,10 +529,10 @@ fn set_bus_undervoltage_threshold_millivolts_rejects_out_of_range_value_works() 
     // Arrange
     let spi_expectations = [];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let result = ina229.set_bus_undervoltage_threshold_millivolts(200000.0);
+    let result = invoke!(ina229.set_bus_undervoltage_threshold_millivolts(200000.0));
 
     // Assert
     let mut spi = ina229.release();

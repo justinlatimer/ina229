@@ -1,7 +1,3 @@
-use approx::assert_relative_eq;
-use embedded_hal_mock::eh1::spi::{Mock as SPIMock, Transaction as SPITransaction};
-use ina229::{Configuration, INA229};
-
 #[test]
 fn read_current_raw_works() {
     // Arrange
@@ -14,10 +10,10 @@ fn read_current_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229.current_raw().expect("reading to be returned");
+    let reading = invoke!(ina229.current_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -43,16 +39,13 @@ fn read_current_amps_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("configuration to be set");
-    ina229
-        .calibrate(0.0162, 10.0)
-        .expect("calibration to be set");
+    invoke!(ina229.calibrate(0.0162, 10.0)).expect("calibration to be set");
 
     // Act
-    let reading = ina229.current_amps().expect("reading to be returned");
+    let reading = invoke!(ina229.current_amps()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -72,10 +65,10 @@ fn read_power_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229.power_raw().expect("reading to be returned");
+    let reading = invoke!(ina229.power_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -101,16 +94,13 @@ fn read_power_watts_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("configuration to be set");
-    ina229
-        .calibrate(0.0162, 10.0)
-        .expect("calibration to be set");
+    invoke!(ina229.calibrate(0.0162, 10.0)).expect("calibration to be set");
 
     // Act
-    let reading = ina229.power_watts().expect("reading to be returned");
+    let reading = invoke!(ina229.power_watts()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -128,12 +118,11 @@ fn read_power_overlimit_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    let reading = ina229
-        .power_overlimit_threshold_raw()
-        .expect("reading to be returned");
+    let reading =
+        invoke!(ina229.power_overlimit_threshold_raw()).expect("reading to be returned");
 
     // Assert
     let mut spi = ina229.release();
@@ -150,11 +139,10 @@ fn write_power_overlimit_threshold_raw_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
+    let mut ina229 = Driver::new(spi);
 
     // Act
-    ina229
-        .set_power_overlimit_threshold_raw(6400)
+    invoke!(ina229.set_power_overlimit_threshold_raw(6400))
         .expect("value to be written");
 
     // Assert
@@ -177,17 +165,13 @@ fn set_power_overlimit_threshold_watts_works() {
         SPITransaction::transaction_end(),
     ];
     let spi = SPIMock::new(&spi_expectations);
-    let mut ina229 = INA229::new(spi);
-    ina229
-        .set_configuration(Configuration::from_bits_truncate(0))
+    let mut ina229 = Driver::new(spi);
+    invoke!(ina229.set_configuration(Configuration::from_bits_truncate(0)))
         .expect("configuration to be set");
-    ina229
-        .calibrate(0.0162, 10.0)
-        .expect("calibration to be set");
+    invoke!(ina229.calibrate(0.0162, 10.0)).expect("calibration to be set");
 
     // Act
-    ina229
-        .set_power_overlimit_threshold_watts(100.0)
+    invoke!(ina229.set_power_overlimit_threshold_watts(100.0))
         .expect("value to be written");
 
     // Assert
