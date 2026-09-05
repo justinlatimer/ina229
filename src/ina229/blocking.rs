@@ -1,3 +1,4 @@
+use super::registers::*;
 use super::*;
 use embedded_hal::spi::SpiDevice;
 
@@ -40,54 +41,25 @@ impl<SPI, SPIError> INA229<SPI>
 where
     SPI: SpiDevice<u8, Error = SPIError>,
 {
-    fn read_register_u16(&mut self, register: Register) -> Result<u16, Error<SPIError>> {
-        let mut buffer = read_register_buffer::<3>(register);
+    fn read_register<Register: ReadableRegister>(
+        &mut self,
+    ) -> Result<Register::Value, Error<SPIError>> {
+        let mut buffer = read_register_buffer::<Register>();
         self.spi
-            .transfer_in_place(&mut buffer)
+            .transfer_in_place(&mut buffer[..Register::FRAME_LEN])
             .map_err(Error::SPIError)?;
-        Ok(read_u16(&buffer[1..3]))
+        Ok(Register::decode(&buffer[1..Register::FRAME_LEN]))
     }
 
-    fn write_register_u16(
+    fn write_register<Register: WritableRegister>(
         &mut self,
-        register: Register,
-        value: u16,
+        value: Register::Value,
     ) -> Result<(), Error<SPIError>> {
-        let buffer = write_register_u16_buffer(register, value);
-        self.spi.write(&buffer).map_err(Error::SPIError)?;
+        let buffer = write_register_buffer::<Register>(value);
+        self.spi
+            .write(&buffer[..Register::FRAME_LEN])
+            .map_err(Error::SPIError)?;
         Ok(())
-    }
-
-    fn read_register_i16(&mut self, register: Register) -> Result<i16, Error<SPIError>> {
-        let mut buffer = read_register_buffer::<3>(register);
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        Ok(read_i16(&buffer[1..3]))
-    }
-
-    fn write_register_i16(
-        &mut self,
-        register: Register,
-        value: i16,
-    ) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(register, value as u16)
-    }
-
-    fn read_register_u24(&mut self, register: Register) -> Result<u32, Error<SPIError>> {
-        let mut buffer = read_register_buffer::<4>(register);
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        Ok(read_u24(&buffer[1..4]))
-    }
-
-    fn read_register_i24(&mut self, register: Register) -> Result<i32, Error<SPIError>> {
-        let mut buffer = read_register_buffer::<4>(register);
-        self.spi
-            .transfer_in_place(&mut buffer)
-            .map_err(Error::SPIError)?;
-        Ok(read_i24(&buffer[1..4]))
     }
 
     /// Sets the CONFIG register with the value provided.
@@ -95,14 +67,14 @@ where
         &mut self,
         configuration: Configuration,
     ) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(Register::Configuration, configuration.bits())?;
+        self.write_register::<ConfigurationRegister>(configuration.bits())?;
         self.state.set_configuration(configuration);
         Ok(())
     }
 
     /// Get the configuration.
     pub fn configuration(&mut self) -> Result<Configuration, Error<SPIError>> {
-        self.read_register_u16(Register::Configuration)
+        self.read_register::<ConfigurationRegister>()
             .map(Configuration::from_bits_truncate)
             .inspect(|&config| {
                 self.state.set_configuration(config);
@@ -114,26 +86,26 @@ where
         &mut self,
         configuration: DiagAlert,
     ) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(Register::DiagAlert, alert_configuration_raw(configuration))
+        self.write_register::<DiagAlertRegister>(alert_configuration_raw(configuration))
     }
 
     /// Read the DIAG_ALERT register, giving the current ALERT pin configuration.
     /// Note: if [`DiagAlert::ALATCH`] is enabled, reading this register clears the ALERT pin.
     pub fn alert_configuration(&mut self) -> Result<DiagAlert, Error<SPIError>> {
-        self.read_register_u16(Register::DiagAlert)
+        self.read_register::<DiagAlertRegister>()
             .map(DiagAlert::from_bits_truncate)
     }
 
     /// Gets the value from the shunt calibration register.
     pub fn shunt_calibration(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::ShuntCalibration)
+        self.read_register::<ShuntCalibrationRegister>()
     }
 
     /// Sets the shunt calibration register to the value provided.
     /// Note: bit-15 of SHUNT_CAL is reserved, so we require value no larger than 0x7FFF.
     pub fn set_shunt_calibration(&mut self, value: u16) -> Result<(), Error<SPIError>> {
         validate_raw_value(value, SHUNT_CALIBRATION_MAX_RAW)?;
-        self.write_register_u16(Register::ShuntCalibration, value)
+        self.write_register::<ShuntCalibrationRegister>(value)
     }
 
     /// Calculate the shunt calibration value and write to the shunt calibration register.
@@ -170,8 +142,8 @@ where
 
     /// Get the raw bus voltage reading.
     pub fn bus_voltage_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::BusVoltage)
-            .map(measurement_raw_from_register)
+        self.read_register::<BusVoltageRegister>()
+            .map(|value| value as i32)
     }
 
     /// Get the bus voltage reading in microvolts.
@@ -181,8 +153,7 @@ where
 
     /// Get the raw shunt voltage reading.
     pub fn shunt_voltage_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::ShuntVoltage)
-            .map(measurement_raw_from_register)
+        self.read_register::<ShuntVoltageRegister>()
     }
 
     /// Get the shunt voltage reading in nanovolts.
@@ -194,7 +165,7 @@ where
 
     /// Get the raw die temperature value.
     pub fn temperature_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::DieTemperature)
+        self.read_register::<DieTemperatureRegister>()
     }
 
     /// Get the die temperature in millidegrees Celsius.
@@ -205,8 +176,7 @@ where
 
     /// Get the raw value from the current register.
     pub fn current_raw(&mut self) -> Result<i32, Error<SPIError>> {
-        self.read_register_i24(Register::Current)
-            .map(measurement_raw_from_register)
+        self.read_register::<CurrentRegister>()
     }
 
     /// Get the current reading in Amps.
@@ -218,7 +188,7 @@ where
 
     /// Get the raw value from the power register
     pub fn power_raw(&mut self) -> Result<u32, Error<SPIError>> {
-        self.read_register_u24(Register::Power)
+        self.read_register::<PowerRegister>()
     }
 
     /// Get the power reading in Watts.
@@ -230,7 +200,7 @@ where
 
     /// Get the raw shunt overvoltage threshold, from the SOVL register.
     pub fn shunt_overvoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::SOVL)
+        self.read_register::<ShuntOverVoltageRegister>()
     }
 
     /// Set the raw shunt overvoltage threshold, in the SOVL register.
@@ -238,7 +208,7 @@ where
         &mut self,
         value: i16,
     ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::SOVL, value)
+        self.write_register::<ShuntOverVoltageRegister>(value)
     }
 
     /// Set the shunt overvoltage threshold in microvolts. Requires the INA229 to already
@@ -256,7 +226,7 @@ where
 
     /// Get the raw shunt undervoltage threshold, from the SUVL register.
     pub fn shunt_undervoltage_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::SUVL)
+        self.read_register::<ShuntUnderVoltageRegister>()
     }
 
     /// Set the raw shunt undervoltage threshold, in the SUVL register.
@@ -264,7 +234,7 @@ where
         &mut self,
         value: i16,
     ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::SUVL, value)
+        self.write_register::<ShuntUnderVoltageRegister>(value)
     }
 
     /// Set the shunt undervoltage threshold in microvolts. Requires the device to already
@@ -282,14 +252,14 @@ where
 
     /// Get the raw bus overvoltage threshold, from the BOVL register.
     pub fn bus_overvoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::BOVL)
+        self.read_register::<BusOverVoltageRegister>()
     }
 
     /// Set the raw bus overvoltage threshold, in the BOVL register.
     /// Note: bit-15 of BOVL is reserved, so we require value no larger than 0x7FFF.
     pub fn set_bus_overvoltage_threshold_raw(&mut self, value: u16) -> Result<(), Error<SPIError>> {
         validate_raw_value(value, BUS_THRESHOLD_MAX_RAW)?;
-        self.write_register_u16(Register::BOVL, value)
+        self.write_register::<BusOverVoltageRegister>(value)
     }
 
     /// Set the bus overvoltage threshold in millivolts.
@@ -302,7 +272,7 @@ where
 
     /// Get the raw bus undervoltage threshold, from the BUVL register.
     pub fn bus_undervoltage_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::BUVL)
+        self.read_register::<BusUnderVoltageRegister>()
     }
 
     /// Set the raw bus undervoltage threshold, in the BUVL register.
@@ -312,7 +282,7 @@ where
         value: u16,
     ) -> Result<(), Error<SPIError>> {
         validate_raw_value(value, BUS_THRESHOLD_MAX_RAW)?;
-        self.write_register_u16(Register::BUVL, value)
+        self.write_register::<BusUnderVoltageRegister>(value)
     }
 
     /// Set the bus undervoltage threshold in millivolts.
@@ -325,7 +295,7 @@ where
 
     /// Get the raw temperature over-limit threshold, from the TEMP_LIMIT register.
     pub fn temperature_overlimit_threshold_raw(&mut self) -> Result<i16, Error<SPIError>> {
-        self.read_register_i16(Register::TOLT)
+        self.read_register::<TemperatureOverLimitRegister>()
     }
 
     /// Set the raw temperature over-limit threshold, in the TEMP_LIMIT register.
@@ -333,7 +303,7 @@ where
         &mut self,
         value: i16,
     ) -> Result<(), Error<SPIError>> {
-        self.write_register_i16(Register::TOLT, value)
+        self.write_register::<TemperatureOverLimitRegister>(value)
     }
 
     /// Set the temperature over-limit threshold in millidegrees Celsius.
@@ -348,12 +318,12 @@ where
 
     /// Get the raw power over-limit threshold, from the PWR_LIMIT register.
     pub fn power_overlimit_threshold_raw(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::POLT)
+        self.read_register::<PowerOverLimitRegister>()
     }
 
     /// Set the raw power over-limit threshold, in the PWR_LIMIT register.
     pub fn set_power_overlimit_threshold_raw(&mut self, value: u16) -> Result<(), Error<SPIError>> {
-        self.write_register_u16(Register::POLT, value)
+        self.write_register::<PowerOverLimitRegister>(value)
     }
 
     /// Set the power over-limit threshold in watts. Requires device to be calibrated.
@@ -370,11 +340,11 @@ where
 
     /// Get the unique manufacturer identification number.
     pub fn manufacturer_id(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::ManufacturerID)
+        self.read_register::<ManufacturerIdRegister>()
     }
 
     /// Get the unique die identification number.
     pub fn device_id(&mut self) -> Result<u16, Error<SPIError>> {
-        self.read_register_u16(Register::DeviceID)
+        self.read_register::<DeviceIdRegister>()
     }
 }
