@@ -22,6 +22,29 @@ fn read_bus_voltage_raw_works() {
 }
 
 #[test]
+fn read_bus_voltage_raw_maximum_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::transfer_in_place(
+            vec![0x15, 0x00, 0x00, 0x00],
+            vec![0x00, 0xFF, 0xFF, 0xF0],
+        ),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    let reading = invoke!(ina229.bus_voltage_raw()).expect("reading to be returned");
+
+    // Assert
+    let mut spi = ina229.release();
+    assert_eq!(reading, (1 << 20) - 1);
+    spi.done();
+}
+
+#[test]
 fn read_bus_voltage_microvolts_works() {
     // Arrange
     let spi_expectations = [
@@ -64,6 +87,98 @@ fn read_shunt_voltage_raw_works() {
     // Assert
     let mut spi = ina229.release();
     assert_eq!(reading, 311040);
+    spi.done();
+}
+
+#[test]
+fn read_shunt_voltage_raw_zero_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::transfer_in_place(
+            vec![0x11, 0x00, 0x00, 0x00],
+            vec![0x00, 0x00, 0x00, 0x00],
+        ),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    let reading = invoke!(ina229.shunt_voltage_raw()).expect("reading to be returned");
+
+    // Assert
+    let mut spi = ina229.release();
+    assert_eq!(reading, 0);
+    spi.done();
+}
+
+#[test]
+fn read_shunt_voltage_raw_negative_one_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::transfer_in_place(
+            vec![0x11, 0x00, 0x00, 0x00],
+            vec![0x00, 0xFF, 0xFF, 0xF0],
+        ),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    let reading = invoke!(ina229.shunt_voltage_raw()).expect("reading to be returned");
+
+    // Assert
+    let mut spi = ina229.release();
+    assert_eq!(reading, -1);
+    spi.done();
+}
+
+#[test]
+fn read_shunt_voltage_raw_minimum_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::transfer_in_place(
+            vec![0x11, 0x00, 0x00, 0x00],
+            vec![0x00, 0x80, 0x00, 0x00],
+        ),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    let reading = invoke!(ina229.shunt_voltage_raw()).expect("reading to be returned");
+
+    // Assert
+    let mut spi = ina229.release();
+    assert_eq!(reading, -(1 << 19));
+    spi.done();
+}
+
+#[test]
+fn read_shunt_voltage_raw_maximum_works() {
+    // Arrange
+    let spi_expectations = [
+        SPITransaction::transaction_start(),
+        SPITransaction::transfer_in_place(
+            vec![0x11, 0x00, 0x00, 0x00],
+            vec![0x00, 0x7F, 0xFF, 0xF0],
+        ),
+        SPITransaction::transaction_end(),
+    ];
+    let spi = SPIMock::new(&spi_expectations);
+    let mut ina229 = Driver::new(spi);
+
+    // Act
+    let reading = invoke!(ina229.shunt_voltage_raw()).expect("reading to be returned");
+
+    // Assert
+    let mut spi = ina229.release();
+    assert_eq!(reading, (1 << 19) - 1);
     spi.done();
 }
 
