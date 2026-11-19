@@ -10,3 +10,8 @@ verify:
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
     cargo check --lib --target thumbv6m-none-eabi --no-default-features
     cargo check --lib --target thumbv6m-none-eabi --all-features
+
+# Run after creating the release commit so packaging requires a clean tree.
+release-check: verify
+    cargo package --list
+    cargo publish --dry-run

@@ -6,6 +6,15 @@
 
 Rust `embedded-hal` driver for the Texas Instruments INA229.
 
+## Features
+
+- Blocking SPI driver (`INA229`) using `embedded_hal::spi::SpiDevice`.
+- Optional async driver (`INA229Async`) using `embedded_hal_async::spi::SpiDevice`.
+- Bus voltage, shunt voltage, current, power, and die temperature measurements.
+- Shunt calibration with range validation.
+- ALERT configuration, diagnostic status, and threshold alerts for shunt voltage,
+  bus voltage, temperature, and power.
+
 ## Blocking and async SPI
 
 The default API uses `embedded_hal::spi::SpiDevice` and provides blocking
@@ -21,7 +30,7 @@ Enable the `async` feature to additionally provide `INA229Async`, which uses
 
 ```toml
 [dependencies]
-ina229 = { version = "0.1", features = ["async"] }
+ina229 = { version = "1.0", features = ["async"] }
 ```
 
 ```rust,ignore
@@ -31,6 +40,10 @@ let voltage = monitor.bus_voltage_microvolts().await?;
 
 The blocking `INA229` remains available when the feature is enabled, so blocking
 and async instances can be used together in the same build.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

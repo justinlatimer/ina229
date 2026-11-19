@@ -1,7 +1,8 @@
 [package]
 name = "ina229"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+rust-version = "1.81"
 authors = [
     "Justin Latimer <justinlatimer@gmail.com>",
 ]
@@ -9,6 +10,8 @@ description = "Driver for INA229 SPI voltage/current/power monitor"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/justinlatimer/ina229"
+keywords = ["ina229", "current-sensor", "power-monitor", "spi", "embedded-hal"]
+categories = ["embedded", "no-std", "hardware-support"]
 
 [package.metadata.docs.rs]
 all-features = true
